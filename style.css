@@ -1,0 +1,267 @@
+/* ============================================================
+   Markdown CSS for Vivliostyle
+   - HackMD-style blockquotes
+   - Syntax-highlighted code blocks (via Prism.js)
+   - Chinese (zh-TW) support
+   - Clean, minimal aesthetics
+   ============================================================ */
+
+/* ---------- Page Layout ---------- */
+@page {
+  size: A4;
+  margin: 20mm 22mm 20mm 22mm;
+}
+
+/* ---------- Google Fonts ---------- */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ---------- Base / Body ---------- */
+:root {
+  --color-text:        #24292f;
+  --color-subtle:      #57606a;
+  --color-border:      #d0d7de;
+  --color-bg:          #ffffff;
+  --color-bg-subtle:   #f6f8fa;
+  --color-accent:      #0969da;
+  --color-quote-bar:   #0969da;   /* HackMD uses a blue left bar */
+  --color-code-bg:     #f6f8fa;
+  --color-code-text:   #24292f;
+  --font-body:         'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  --font-mono:         'JetBrains Mono', 'Source Code Pro', 'Courier New', monospace;
+  --line-height:       1.75;
+  --font-size-base:    10.5pt;
+}
+
+html, body {
+  font-family:    var(--font-body);
+  font-size:      var(--font-size-base);
+  line-height:    var(--line-height);
+  color:          var(--color-text);
+  background:     var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  word-break:     break-word;
+  overflow-wrap:  break-word;
+}
+
+/* ---------- Headings ---------- */
+h1, h2, h3, h4, h5, h6 {
+  font-family:   var(--font-body);
+  font-weight:   700;
+  line-height:   1.35;
+  margin-top:    1.6em;
+  margin-bottom: 0.5em;
+  color:         var(--color-text);
+}
+
+h1 { font-size: 2em;    border-bottom: 2px solid var(--color-border); padding-bottom: 0.3em; }
+h2 { font-size: 1.5em;  border-bottom: 1px solid var(--color-border); padding-bottom: 0.25em; }
+h3 { font-size: 1.2em; }
+h4 { font-size: 1.05em; }
+h5 { font-size: 0.95em; }
+h6 { font-size: 0.9em;  color: var(--color-subtle); }
+
+/* ---------- Paragraphs ---------- */
+p {
+  margin: 0.7em 0 0.9em;
+}
+
+/* ---------- Links ---------- */
+a {
+  color:           var(--color-accent);
+  text-decoration: underline;
+}
+a:hover {
+  text-decoration: none;
+}
+
+/* ---------- Blockquote — HackMD style ----------
+   HackMD renders blockquotes with:
+   - left blue bar (border-left)
+   - light grey background
+   - slightly muted text colour
+   ------------------------------------------------ */
+blockquote {
+  margin:       0.9em 0;
+  padding:      0.5em 1em;
+  border-left:  4px solid var(--color-quote-bar);
+  background:   #eef5ff;
+  color:        var(--color-subtle);
+  border-radius: 0 4px 4px 0;
+  font-style:   normal;
+}
+
+blockquote > p {
+  margin: 0.3em 0;
+}
+
+blockquote > blockquote {
+  border-left-color: #85b8ff;
+  background:        #f0f6ff;
+}
+
+/* ---------- Horizontal Rule ---------- */
+hr {
+  border:       none;
+  border-top:   1px solid var(--color-border);
+  margin:       1.5em 0;
+}
+
+/* ---------- Lists ---------- */
+ul, ol {
+  padding-left: 1.6em;
+  margin:       0.5em 0 0.8em;
+}
+li {
+  margin: 0.25em 0;
+}
+li + li {
+  margin-top: 0.2em;
+}
+ul ul, ol ol, ul ol, ol ul {
+  margin: 0.2em 0;
+}
+
+/* ---------- Tables ---------- */
+table {
+  width:           100%;
+  border-collapse: collapse;
+  margin:          1em 0;
+  font-size:       0.93em;
+}
+th {
+  background:    var(--color-bg-subtle);
+  font-weight:   600;
+  text-align:    left;
+}
+th, td {
+  border:   1px solid var(--color-border);
+  padding:  0.45em 0.8em;
+}
+tr:nth-child(even) td {
+  background: #fafbfc;
+}
+
+/* ---------- Inline Code ---------- */
+code {
+  font-family:    var(--font-mono);
+  font-size:      0.875em;
+  padding:        0.15em 0.4em;
+  background:     var(--color-code-bg);
+  border:         1px solid var(--color-border);
+  border-radius:  4px;
+  color:          var(--color-code-text);
+  white-space:    pre-wrap;
+}
+
+/* ---------- Fenced Code Block ---------- */
+pre {
+  margin:         1em 0;
+  padding:        0;
+  border-radius:  6px;
+  overflow:       hidden;
+  border:         1px solid var(--color-border);
+  page-break-inside: avoid;
+}
+
+pre > code {
+  display:        block;
+  padding:        1em 1.2em;
+  background:     #1e1e2e;  /* dark background for code blocks */
+  color:          #cdd6f4;
+  border:         none;
+  border-radius:  0;
+  font-size:      0.85em;
+  line-height:    1.6;
+  overflow-x:     auto;
+  white-space:    pre;
+}
+
+/* ---------- Prism.js Theme overrides (Catppuccin Mocha palette)
+   Compatible with prism-okaidia / prism-tomorrow / prism-vs
+   Works alongside any Prism CDN theme — these rules take priority
+   ---------------------------------------------------------------- */
+
+/* Generic tokens */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata              { color: #6c7086; font-style: italic; }
+
+.token.punctuation        { color: #cdd6f4; }
+
+.token.namespace          { opacity: 0.7; }
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted            { color: #f38ba8; }  /* red */
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted           { color: #a6e3a1; }  /* green */
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string      { color: #89dceb; }  /* sky */
+
+.token.atrule,
+.token.attr-value,
+.token.keyword            { color: #89b4fa; }  /* blue */
+
+.token.function,
+.token.class-name         { color: #f9e2af; }  /* yellow */
+
+.token.regex,
+.token.important,
+.token.variable           { color: #fab387; }  /* peach */
+
+.token.important,
+.token.bold               { font-weight: 600; }
+.token.italic             { font-style: italic; }
+
+/* ---------- Images ---------- */
+img {
+  max-width:  100%;
+  height:     auto;
+  display:    block;
+  margin:     0.8em auto;
+}
+
+/* ---------- Footnotes / Superscript ---------- */
+sup, sub {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+/* ---------- Definition Lists ---------- */
+dl { margin: 0.7em 0; }
+dt { font-weight: 600; margin-top: 0.6em; }
+dd { margin-left: 1.5em; color: var(--color-subtle); }
+
+/* ---------- Print / Vivliostyle specifics ---------- */
+@media print {
+  body {
+    font-size: 10pt;
+  }
+
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+
+  pre, blockquote, table {
+    page-break-inside: avoid;
+  }
+
+  a {
+    text-decoration: none;
+    color: var(--color-text);
+  }
+}
