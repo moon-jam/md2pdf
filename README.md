@@ -28,6 +28,8 @@ npm install
 npm link
 ```
 
+<!-- pagebreak -->
+
 ## 💻 Usage
 
 Run the tool from any directory against any Markdown file!
@@ -35,6 +37,9 @@ Run the tool from any directory against any Markdown file!
 ```bash
 # Basic usage (outputs 'report.pdf' in the same directory)
 md2pdf report.md
+
+# Live Preview & Watch Mode (auto-reloads on save)
+md2pdf report.md --watch
 
 # Custom output path
 md2pdf report.md -o ~/Documents/final_report.pdf
@@ -54,10 +59,20 @@ md2pdf --help
 | Flag | Alias | Description | Default |
 |---|---|---|---|
 | `--output` | `-o` | Output PDF file path | Same as input file with `.pdf` |
+| `--watch`  | `-w` | Open browser and live-reload on file changes | `false` |
 | `--style` | | Custom CSS stylesheet file path | Bundled `style.css` |
 | `--size` | | PDF paper size (A4, Letter, B5, etc) | `A4` |
 | `--title` | | Title of the generated PDF document | Base filename |
 | `--language`| | Language metadata code | `zh-TW` |
+
+## 💡 Tips & Tricks
+
+**Forcing a Page Break**  
+If you need to manually split content to a new page, simply type:
+```markdown
+<!-- pagebreak -->
+```
+md2pdf will automatically convert it into a seamless page split during rendering.
 
 ## 🎨 Modifying the Theme
 
