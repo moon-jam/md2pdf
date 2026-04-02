@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>md2pdf — Online Converter</title>
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/overlay.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/gfm/gfm.min.js"></script>
+</head>
+<body>
+  <aside id="sidebar">
+    <h1>md2pdf</h1>
+    <p class="subtitle">Markdown → PDF in your browser</p>
+
+    <label id="upload-area">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <span id="upload-label">Open .md file</span>
+      <input type="file" id="file-input" accept=".md,.markdown,text/markdown">
+    </label>
+
+    <div class="option-row">
+      <label for="page-size">Page size</label>
+      <select id="page-size">
+        <option value="A4">A4</option>
+        <option value="Letter">Letter</option>
+        <option value="A3">A3</option>
+        <option value="B5">B5</option>
+      </select>
+    </div>
+
+    <div class="option-row">
+      <label>Page zoom</label>
+      <div style="display: flex; gap: 4px; align-items: center;">
+        <button id="zoom-out" class="icon-btn">-</button>
+        <span id="zoom-level" style="font-size: 0.8rem; min-width: 36px; text-align: center;">50%</span>
+        <button id="zoom-in" class="icon-btn">+</button>
+      </div>
+    </div>
+
+    <div class="option-row">
+      <label for="page-numbers-toggle">Page numbers</label>
+      <input type="checkbox" id="page-numbers-toggle">
+    </div>
+
+    <div class="option-row">
+      <label for="theme-toggle">Dark Mode</label>
+      <input type="checkbox" id="theme-toggle">
+    </div>
+
+    <details id="css-section">
+      <summary>Custom CSS</summary>
+      <textarea id="custom-css" placeholder="/* e.g. body { font-size: 12pt; } */"></textarea>
+      <button id="apply-css">Apply</button>
+    </details>
+
+    <button id="print-btn" disabled>Save as PDF</button>
+    <p id="status"></p>
+  </aside>
+
+  <div id="editor-pane">
+    <textarea id="editor" spellcheck="false"
+      placeholder="Type or paste Markdown here…&#10;&#10;Tip: paste or drop images directly into this editor."></textarea>
+  </div>
+
+  <div id="resizer"></div>
+
+  <div id="preview-pane">
+    <div id="preview-loading" hidden>
+      <div class="spinner"></div>
+    </div>
+    <iframe id="preview-frame" title="PDF Preview"></iframe>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
