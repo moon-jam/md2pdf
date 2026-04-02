@@ -385,6 +385,42 @@ select:focus-visible { outline: 2px solid var(--accent); }
 [data-theme="dark"] .CodeMirror-gutters  { background: #1e1e2e !important; border-right-color: #313244 !important; }
 [data-theme="dark"] .CodeMirror-linenumber { color: #585b70 !important; }
 
+/* ---- Light Mode token colours (GitHub inspired) ---- */
+.cm-s-default .cm-header   { font-weight: bold; color: #0550ae; }
+.cm-s-default .cm-header-1 { color: #0550ae; }
+.cm-s-default .cm-header-2 { color: #116329; }
+.cm-s-default .cm-header-3 { color: #cf222e; }
+.cm-s-default .cm-header-4 { color: #8250df; }
+.cm-s-default .cm-header-5 { color: #953800; }
+.cm-s-default .cm-header-6 { color: #663300; }
+
+.cm-s-default .cm-strong       { color: #cf222e; font-weight: bold; }
+.cm-s-default .cm-em           { color: #953800; font-style: italic; }
+.cm-s-default .cm-em.cm-strong { color: #bf3989; }
+.cm-s-default .cm-strikethrough { color: #6e7781; text-decoration: line-through; }
+
+.cm-s-default .cm-quote      { color: #6e7781; font-style: italic; }
+.cm-s-default .cm-hr         { color: #d0d7de; }
+.cm-s-default .cm-formatting { color: #afb8c1; }
+
+.cm-s-default .cm-bracket    { color: #24292f; }
+
+/* Diff mode (light) */
+.cm-s-default .cm-deleted  { color: #cf222e; background: #ffebe9; }
+.cm-s-default .cm-inserted { color: #116329; background: #dafbe1; }
+
+/* ---- Links & Images (Enhanced) ---- */
+.cm-s-default .cm-link {
+  color: #0969da;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.cm-s-default .cm-url {
+  color: #0550ae;
+  opacity: 0.8;
+  font-family: inherit;
+}
+
 /* Headings — Mauve → Blue → Sky → Teal → Green → Subtext */
 [data-theme="dark"] .cm-s-default .cm-header   { font-weight: bold; color: #cba6f7; }
 [data-theme="dark"] .cm-s-default .cm-header-1 { color: #cba6f7; }
@@ -442,6 +478,14 @@ select:focus-visible { outline: 2px solid var(--accent); }
 [data-theme="dark"] .cm-s-default .cm-builtin    { color: #89b4fa; }
 [data-theme="dark"] .cm-s-default .cm-bracket    { color: #a6adc8; }
 [data-theme="dark"] .cm-s-default .cm-error      { color: #f38ba8; background: transparent; }
+
+/* Diff mode (dark) */
+[data-theme="dark"] .cm-s-default .cm-deleted  { color: #f38ba8; background: rgba(243, 139, 168, 0.1); }
+[data-theme="dark"] .cm-s-default .cm-inserted { color: #a6e3a1; background: rgba(166, 227, 161, 0.1); }
+
+/* ---- Links (dark) ---- */
+[data-theme="dark"] .cm-s-default .cm-link { color: #89b4fa; text-decoration: underline; }
+[data-theme="dark"] .cm-s-default .cm-url  { color: #74c7ec; opacity: 0.8; }
 
 /* ---------- Resizer ---------- */
 #resizer {
