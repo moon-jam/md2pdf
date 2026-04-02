@@ -24,6 +24,11 @@ const zoomOutBtn     = document.getElementById('zoom-out');
 const zoomLevelTxt   = document.getElementById('zoom-level');
 const themeToggle    = document.getElementById('theme-toggle');
 
+const infoBtn        = document.getElementById('info-btn');
+const infoModal      = document.getElementById('info-modal-overlay');
+const infoCloseBtn   = document.getElementById('info-close-btn');
+const infoDontShowChx = document.getElementById('info-dont-show');
+
 const sidebarResizer = document.getElementById('sidebar-resizer');
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
 const editorFilename = document.getElementById('editor-filename');
@@ -146,6 +151,27 @@ if (sidebarToggleBtn) {
       document.body.classList.add('sidebar-collapsed');
     }
   });
+}
+
+// ============================================================
+//  Info Modal
+// ============================================================
+if (infoBtn && infoModal && infoCloseBtn) {
+  const closeInfoModal = () => { infoModal.hidden = true; };
+  infoBtn.addEventListener('click', () => { infoModal.hidden = false; });
+  infoCloseBtn.addEventListener('click', closeInfoModal);
+  infoModal.addEventListener('click', (e) => {
+    if (e.target === infoModal) closeInfoModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !infoModal.hidden) closeInfoModal();
+  });
+  
+  if (infoDontShowChx) {
+    infoDontShowChx.addEventListener('change', (e) => {
+      localStorage.setItem('md2pdf_hide_info', e.target.checked ? 'true' : 'false');
+    });
+  }
 }
 
 // ============================================================
@@ -1051,7 +1077,14 @@ async function loadState() {
     const storedCounter = await idbGet('imageCounter');
     if (storedCounter) imageCounter = parseInt(storedCounter);
 
-    // 3. Editor text
+    // 3. Info Modal Visibility
+    const hideInfo = localStorage.getItem('md2pdf_hide_info') === 'true';
+    if (hideInfo && infoModal) {
+      infoModal.hidden = true;
+      if (infoDontShowChx) infoDontShowChx.checked = true;
+    }
+
+    // 4. Editor text
     const storedText = localStorage.getItem('md2pdf_editor');
     if (storedText) {
       cm.setValue(storedText);
