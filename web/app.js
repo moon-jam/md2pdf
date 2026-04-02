@@ -24,6 +24,12 @@ const zoomOutBtn     = document.getElementById('zoom-out');
 const zoomLevelTxt   = document.getElementById('zoom-level');
 const themeToggle    = document.getElementById('theme-toggle');
 
+const explorerResizer = document.getElementById('explorer-resizer');
+const fileExplorer    = document.getElementById('file-explorer');
+const fileTree        = document.getElementById('file-tree');
+const explorerClose   = document.getElementById('explorer-close');
+const explorerToggle  = document.getElementById('explorer-toggle');
+
 // ============================================================
 //  CodeMirror
 // ============================================================
@@ -89,6 +95,39 @@ document.addEventListener('mouseup', () => {
   resizerEl.classList.remove('resizing');
   previewFrame.style.pointerEvents = '';
 });
+
+// ============================================================
+//  File Explorer Resizer (Vertical)
+// ============================================================
+let isExpResizing = false;
+let expStartY = 0;
+let expStartHeight = 0;
+
+if (explorerResizer) {
+  explorerResizer.addEventListener('mousedown', (e) => {
+    isExpResizing = true;
+    expStartY = e.clientY;
+    expStartHeight = fileExplorer.offsetHeight;
+    document.body.style.cursor = 'ns-resize';
+    explorerResizer.classList.add('dragging');
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isExpResizing) return;
+    const dy = expStartY - e.clientY; // dragged up = positive dy
+    let newHeight = expStartHeight + dy;
+    if (newHeight < 60) newHeight = 60;
+    if (newHeight > window.innerHeight * 0.8) newHeight = window.innerHeight * 0.8;
+    fileExplorer.style.height = newHeight + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isExpResizing) return;
+    isExpResizing = false;
+    document.body.style.cursor = '';
+    explorerResizer.classList.remove('dragging');
+  });
+}
 
 // ============================================================
 //  Zoom  (applied after each render via CSS var)
@@ -188,49 +227,266 @@ function resolveImages(text) {
 }
 
 // ============================================================
-//  Folder upload — resolve local image paths
+//  Folder upload — file explorer + resolve local image paths
 // ============================================================
-folderInput.addEventListener('change', async (e) => {
-  const files = Array.from(e.target.files);
-  if (!files.length) return;
 
-  // 1. Find the first .md file
-  const mdFile = files.find(f => /\.(md|markdown)$/i.test(f.name));
-  if (!mdFile) {
-    alert('No .md file found in the selected folder.');
-    return;
+// Stored folder state
+let folderFiles = [];      // All File objects from the folder
+let folderRoot  = '';      // The top-level folder name
+let folderMdDir = '';      // The directory containing the active .md file
+
+explorerClose.addEventListener('click', () => {
+  fileExplorer.hidden = true;
+  if (folderFiles.length) explorerToggle.hidden = false;
+});
+
+explorerToggle.addEventListener('click', () => {
+  fileExplorer.hidden = false;
+  explorerToggle.hidden = true;
+});
+
+/** Build a nested tree structure from a flat file list. */
+function buildTree(files) {
+  const root = { name: '', children: {}, files: [] };
+  for (const f of files) {
+    const parts = f.webkitRelativePath.split('/');
+    // Skip the root folder name (parts[0])
+    let node = root;
+    for (let i = 1; i < parts.length - 1; i++) {
+      if (!node.children[parts[i]]) {
+        node.children[parts[i]] = { name: parts[i], children: {}, files: [] };
+      }
+      node = node.children[parts[i]];
+    }
+    node.files.push({ name: parts[parts.length - 1], file: f });
+  }
+  return root;
+}
+
+/** Get an icon emoji for a file based on extension. */
+function fileIcon(name) {
+  if (/\.(md|markdown)$/i.test(name)) return '📝';
+  if (/\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i.test(name)) return '🖼️';
+  if (/\.(css)$/i.test(name)) return '🎨';
+  if (/\.(js|ts)$/i.test(name)) return '⚙️';
+  if (/\.(json|ya?ml|toml)$/i.test(name)) return '📋';
+  return '📄';
+}
+
+const IMAGE_EXTS = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i;
+
+/** Render a tree node into the DOM. */
+function renderTreeNode(node, container) {
+  // Sort: folders first, then files alphabetically
+  const folderNames = Object.keys(node.children).sort();
+  const sortedFiles = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const fname of folderNames) {
+    const child = node.children[fname];
+
+    const toggle = document.createElement('div');
+    toggle.className = 'tree-folder-toggle';
+    toggle.innerHTML = `<span class="chevron">▼</span><span class="tree-icon">📁</span><span>${fname}</span>`;
+
+    const childContainer = document.createElement('div');
+    childContainer.className = 'tree-children';
+
+    toggle.addEventListener('click', () => {
+      toggle.classList.toggle('collapsed');
+      childContainer.classList.toggle('collapsed');
+    });
+
+    container.appendChild(toggle);
+    container.appendChild(childContainer);
+    renderTreeNode(child, childContainer);
   }
 
-  // 2. Figure out the folder prefix
+  for (const { name, file } of sortedFiles) {
+    const item = document.createElement('div');
+    item.className = 'tree-item';
+
+    const ext = name.match(/\.(\w+)$/)?.[1]?.toUpperCase() || '';
+    const isImage = IMAGE_EXTS.test(name);
+    const badgeHtml = isImage ? `<span class="tree-badge">${ext}</span>` : '';
+
+    item.innerHTML = `<span class="tree-icon">${fileIcon(name)}</span><span class="tree-name">${name}</span>${badgeHtml}`;
+    item.title = file.webkitRelativePath;
+
+    // Markdown files: click to load
+    if (/\.(md|markdown)$/i.test(name)) {
+      item.addEventListener('click', () => loadMdFromFolder(file));
+    }
+    // Image files: click to preview, right-click to insert
+    else if (isImage) {
+      const relPath = file.webkitRelativePath;
+      const relToMd = relPath.startsWith(folderRoot + '/')
+        ? relPath.substring(folderRoot.length + 1)
+        : relPath;
+      const placeholder = '{{img:' + relToMd + '}}';
+
+      // Click → full preview
+      item.addEventListener('click', async () => {
+        let dataUrl = imageStore[placeholder];
+        if (!dataUrl) {
+          dataUrl = await readFileAsDataURL(file);
+          storeImage(dataUrl, 'img:' + relToMd);
+        }
+        showImagePreview(dataUrl, name);
+      });
+
+      // Right-click → context menu
+      item.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showContextMenu(e.clientX, e.clientY, [
+          { icon: '📋', label: 'Insert at cursor', action: async () => {
+            if (!imageStore[placeholder]) {
+              const dataUrl = await readFileAsDataURL(file);
+              storeImage(dataUrl, 'img:' + relToMd);
+            }
+            const alt = name.replace(/\.[^.]+$/, '');
+            cm.getDoc().replaceRange(`\n![${alt}](${placeholder})\n`, cm.getDoc().getCursor());
+            scheduleRender();
+          }},
+          { icon: '👁️', label: 'Preview', action: async () => {
+            let dataUrl = imageStore[placeholder];
+            if (!dataUrl) {
+              dataUrl = await readFileAsDataURL(file);
+              storeImage(dataUrl, 'img:' + relToMd);
+            }
+            showImagePreview(dataUrl, name);
+          }},
+        ]);
+      });
+    }
+
+    container.appendChild(item);
+  }
+}
+
+// ---- Context Menu ----
+function showContextMenu(x, y, items) {
+  closeContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+
+  for (const item of items) {
+    const el = document.createElement('div');
+    el.className = 'ctx-menu-item';
+    el.innerHTML = `<span class="ctx-icon">${item.icon}</span>${item.label}`;
+    el.addEventListener('click', () => {
+      closeContextMenu();
+      item.action();
+    });
+    menu.appendChild(el);
+  }
+
+  // Position: keep on screen
+  menu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - 120) + 'px';
+  document.body.appendChild(menu);
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', closeContextMenu, { once: true });
+    document.addEventListener('contextmenu', closeContextMenu, { once: true });
+  }, 10);
+}
+
+function closeContextMenu() {
+  document.querySelectorAll('.ctx-menu').forEach(el => el.remove());
+}
+
+// ---- Image Preview Lightbox ----
+function showImagePreview(dataUrl, filename) {
+  closeImagePreview();
+  const overlay = document.createElement('div');
+  overlay.className = 'img-preview-overlay';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'preview-close';
+  closeBtn.innerHTML = '✕';
+  closeBtn.title = 'Close (Esc)';
+  closeBtn.addEventListener('click', closeImagePreview);
+
+  const container = document.createElement('div');
+  container.className = 'preview-container';
+
+  const img = document.createElement('img');
+  img.src = dataUrl;
+  img.alt = filename;
+
+  const label = document.createElement('div');
+  label.className = 'preview-filename';
+  label.textContent = filename;
+
+  container.appendChild(img);
+  container.appendChild(label);
+  overlay.appendChild(closeBtn);
+  overlay.appendChild(container);
+
+  // Click backdrop (outside image) to close
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeImagePreview();
+  });
+
+  // Esc to close
+  const escHandler = (e) => {
+    if (e.key === 'Escape') { closeImagePreview(); document.removeEventListener('keydown', escHandler); }
+  };
+  document.addEventListener('keydown', escHandler);
+
+  document.body.appendChild(overlay);
+}
+
+function closeImagePreview() {
+  document.querySelectorAll('.img-preview-overlay').forEach(el => el.remove());
+}
+
+/** Highlight the active .md file in the tree. */
+function setActiveFile(filePath) {
+  fileTree.querySelectorAll('.tree-item.active').forEach(el => el.classList.remove('active'));
+  fileTree.querySelectorAll('.tree-item').forEach(el => {
+    if (el.title === filePath) el.classList.add('active');
+  });
+}
+
+/** Load a .md file from the stored folder, resolving its image paths. */
+async function loadMdFromFolder(mdFile) {
   const mdRelPath = mdFile.webkitRelativePath;
   const mdDir = mdRelPath.substring(0, mdRelPath.lastIndexOf('/') + 1);
+  folderMdDir = mdDir;
 
-  // 3. Build a temporary map: relative path → base64
-  const imageExts = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i;
-  const imageFiles = files.filter(f => imageExts.test(f.name));
-
+  // Build image placeholders relative to this .md file
+  const imageFiles = folderFiles.filter(f => IMAGE_EXTS.test(f.name));
   const pathToPlaceholder = {};
+
   await Promise.all(imageFiles.map(async (imgFile) => {
     const imgRelPath = imgFile.webkitRelativePath;
     const relToMd = imgRelPath.startsWith(mdDir)
       ? imgRelPath.substring(mdDir.length)
       : imgRelPath;
-    const dataUrl = await readFileAsDataURL(imgFile);
-    // Store with a human-readable label like {{img:photo.png}}
-    const label = 'img:' + relToMd;
-    const placeholder = storeImage(dataUrl, label);
+    const label = 'img:' + (imgRelPath.startsWith(folderRoot + '/')
+      ? imgRelPath.substring(folderRoot.length + 1)
+      : imgRelPath);
+    const placeholder = '{{' + label + '}}';
+
+    if (!imageStore[placeholder]) {
+      const dataUrl = await readFileAsDataURL(imgFile);
+      storeImage(dataUrl, label);
+    }
+
     pathToPlaceholder[relToMd] = placeholder;
     pathToPlaceholder['./' + relToMd] = placeholder;
   }));
 
-  // 4. Read markdown and swap relative paths → placeholders
+  // Read and transform markdown
   let mdText = await mdFile.text();
 
   mdText = mdText.replace(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
     (match, alt, src) => {
       if (/^(https?:\/\/|data:)/i.test(src)) return match;
-      const normalized = src.replace(/^\.\//,  '');
+      const normalized = src.replace(/^\.\//, '');
       const ph = pathToPlaceholder[normalized] || pathToPlaceholder['./' + normalized];
       return ph ? `![${alt}](${ph})` : match;
     }
@@ -240,18 +496,41 @@ folderInput.addEventListener('change', async (e) => {
     /<img\s([^>]*?)src=["']([^"']+)["']/gi,
     (match, before, src) => {
       if (/^(https?:\/\/|data:)/i.test(src)) return match;
-      const normalized = src.replace(/^\.\//,  '');
+      const normalized = src.replace(/^\.\//, '');
       const ph = pathToPlaceholder[normalized] || pathToPlaceholder['./' + normalized];
       return ph ? `<img ${before}src="${ph}"` : match;
     }
   );
 
-  // 5. Load into editor
-  const folderName = mdRelPath.split('/')[0];
-  folderLabel.textContent = folderName;
   uploadLabel.textContent = mdFile.name;
   cm.setValue(mdText);
+  setActiveFile(mdRelPath);
   scheduleRender();
+}
+
+folderInput.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+
+  folderFiles = files;
+  folderRoot = files[0].webkitRelativePath.split('/')[0];
+  folderLabel.textContent = folderRoot;
+
+  // Build and render file tree
+  const tree = buildTree(files);
+  fileTree.innerHTML = '';
+  renderTreeNode(tree, fileTree);
+  fileExplorer.hidden = false;
+  explorerToggle.hidden = true;
+
+  // Auto-load the first .md file
+  const mdFile = files.find(f => /\.(md|markdown)$/i.test(f.name));
+  if (mdFile) {
+    await loadMdFromFolder(mdFile);
+  } else {
+    alert('No .md file found in the selected folder.');
+  }
+
   e.target.value = '';
 });
 

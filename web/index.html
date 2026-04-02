@@ -14,7 +14,8 @@
 </head>
 <body>
   <aside id="sidebar">
-    <h1>md2pdf</h1>
+    <div id="sidebar-top">
+      <h1>md2pdf</h1>
     <p class="subtitle">Markdown → PDF in your browser</p>
 
     <label id="upload-area">
@@ -28,6 +29,7 @@
       <span id="folder-label">Open Folder</span>
       <input type="file" id="folder-input" webkitdirectory directory>
     </label>
+    <button id="explorer-toggle" class="icon-btn" title="Show file explorer" hidden style="font-size:0.7rem; padding: 4px 8px; width: auto;">📁 Show Files</button>
 
     <label id="image-upload-area" class="upload-btn">
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -72,6 +74,16 @@
 
     <button id="print-btn" disabled>Save as PDF</button>
     <p id="status"></p>
+    </div>
+
+    <div id="file-explorer" hidden>
+      <div id="explorer-resizer"></div>
+      <div class="explorer-header">
+        <span class="explorer-title">📁 Files</span>
+        <button id="explorer-close" class="icon-btn" title="Close">×</button>
+      </div>
+      <div id="file-tree"></div>
+    </div>
   </aside>
 
   <div id="editor-pane">
