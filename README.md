@@ -2,7 +2,6 @@
   <h1><code>md2pdf</code></h1>
   <p><strong>Convert Markdown to professional PDF instantly.</strong></p>
   <p>Built with <a href="https://vivliostyle.org/">Vivliostyle</a> / Paged.js. Features Prism.js syntax highlighting and built-in Traditional Chinese typography.</p>
-  <br>
   <p>
     🌐 <strong>Try the Online Web Editor:</strong> <a href="https://moon-jam.me/md2pdf">moon-jam.me/md2pdf</a>
   </p>
