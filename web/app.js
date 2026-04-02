@@ -24,6 +24,10 @@ const zoomOutBtn     = document.getElementById('zoom-out');
 const zoomLevelTxt   = document.getElementById('zoom-level');
 const themeToggle    = document.getElementById('theme-toggle');
 
+const sidebarResizer = document.getElementById('sidebar-resizer');
+const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+const editorFilename = document.getElementById('editor-filename');
+
 const explorerResizer = document.getElementById('explorer-resizer');
 const fileExplorer    = document.getElementById('file-explorer');
 const fileTree        = document.getElementById('file-tree');
@@ -71,30 +75,78 @@ themeToggle.addEventListener('change', (e) => {
 });
 
 // ============================================================
-//  Resizer
+//  Resizers (Horizontal)
 // ============================================================
 let isResizing = false;
+let isSidebarResizing = false;
+
+// 1. Editor <-> Preview Resizer
 resizerEl.addEventListener('mousedown', () => {
   isResizing = true;
+  document.body.classList.add('is-resizing');
   document.body.style.cursor = 'col-resize';
   resizerEl.classList.add('resizing');
   previewFrame.style.pointerEvents = 'none';
 });
+
+// 2. Sidebar <-> Editor Resizer
+if (sidebarResizer) {
+  sidebarResizer.addEventListener('mousedown', () => {
+    isSidebarResizing = true;
+    document.body.classList.add('is-resizing');
+    document.body.style.cursor = 'col-resize';
+    sidebarResizer.classList.add('resizing');
+    previewFrame.style.pointerEvents = 'none';
+  });
+}
+
+function getSidebarW() {
+  if (document.body.classList.contains('sidebar-collapsed')) return 0;
+  return parseFloat(getComputedStyle(document.body).getPropertyValue('--sidebar-w')) || 240;
+}
+
 document.addEventListener('mousemove', (e) => {
-  if (!isResizing) return;
-  const sidebarW = 240;
-  const mid = e.clientX - sidebarW;
-  if (mid > 150 && window.innerWidth - e.clientX > 150) {
-    document.body.style.gridTemplateColumns = `${sidebarW}px ${mid}px 6px 1fr`;
+  if (isResizing) {
+    const sw = getSidebarW();
+    const editorLeft = sw > 0 ? sw + 6 : 0;
+    const mid = e.clientX - editorLeft;
+    if (mid > 150 && window.innerWidth - e.clientX > 150) {
+      document.body.style.setProperty('--editor-w', mid + 'px');
+    }
+  } else if (isSidebarResizing) {
+    let newW = e.clientX;
+    if (newW < 80) {
+      document.body.classList.add('sidebar-collapsed');
+    } else {
+      if (newW > window.innerWidth / 2.5) newW = window.innerWidth / 2.5; // max sidebar width
+      document.body.classList.remove('sidebar-collapsed');
+      document.body.style.setProperty('--sidebar-w', newW + 'px');
+    }
   }
 });
+
 document.addEventListener('mouseup', () => {
-  if (!isResizing) return;
-  isResizing = false;
-  document.body.style.cursor = '';
-  resizerEl.classList.remove('resizing');
-  previewFrame.style.pointerEvents = '';
+  if (isResizing || isSidebarResizing) {
+    isResizing = false;
+    isSidebarResizing = false;
+    document.body.classList.remove('is-resizing');
+    document.body.style.cursor = '';
+    resizerEl.classList.remove('resizing');
+    if (sidebarResizer) sidebarResizer.classList.remove('resizing');
+    previewFrame.style.pointerEvents = '';
+  }
 });
+
+if (sidebarToggleBtn) {
+  sidebarToggleBtn.addEventListener('click', () => {
+    if (document.body.classList.contains('sidebar-collapsed')) {
+      document.body.classList.remove('sidebar-collapsed');
+      document.body.style.setProperty('--sidebar-w', '240px');
+    } else {
+      document.body.classList.add('sidebar-collapsed');
+    }
+  });
+}
 
 // ============================================================
 //  File Explorer Resizer (Vertical)
@@ -180,6 +232,7 @@ fileInput.addEventListener('change', async (e) => {
   if (!file) return;
   cm.setValue(await file.text());
   uploadLabel.textContent = file.name;
+  editorFilename.textContent = file.name;
   scheduleRender();
 });
 
@@ -192,6 +245,7 @@ uploadArea.addEventListener('drop', async (e) => {
   if (!file) return;
   cm.setValue(await file.text());
   uploadLabel.textContent = file.name;
+  editorFilename.textContent = file.name;
   scheduleRender();
 });
 
@@ -509,13 +563,22 @@ function setActiveFile(filePath) {
   });
 }
 
-/** Load a .md file from the stored folder, resolving its image paths. */
-async function loadMdFromFolder(mdFile) {
-  const mdRelPath = mdFile.webkitRelativePath;
-  const mdDir = mdRelPath.substring(0, mdRelPath.lastIndexOf('/') + 1);
+async function loadMdFromFolder(file) {
+  const text = await file.text();
+  cm.setValue(text);
+  
+  // Keep mdDir for image path resolution matching
+  const mdRelPath = file.webkitRelativePath || file.name;
+  const mdDir = mdRelPath.includes('/') ? mdRelPath.substring(0, mdRelPath.lastIndexOf('/') + 1) : '';
   folderMdDir = mdDir;
-
-  // Build image placeholders relative to this .md file
+  
+  // Set breadcrumbs / context based on file path
+  let path = mdRelPath;
+  if (path.startsWith(folderRoot + '/')) path = path.substring(folderRoot.length + 1);
+  editorFilename.textContent = `${folderRoot ? folderRoot + ' / ' : ''}${path}`;
+  
+  setActiveFile(file.webkitRelativePath);
+  scheduleRender();
   const imageFiles = folderFiles.filter(f => IMAGE_EXTS.test(f.name));
   const pathToPlaceholder = {};
 
