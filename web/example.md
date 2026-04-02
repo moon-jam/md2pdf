@@ -36,8 +36,6 @@ by relative path are resolved automatically:
 
 You can also **paste** or **drag-and-drop** images directly into this editor.
 
----
-
 ## 💻 Syntax Highlighting
 
 Fenced code blocks with a language tag are syntax-highlighted in the PDF:
