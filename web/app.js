@@ -206,11 +206,66 @@ imageInput.addEventListener('change', async (e) => {
 });
 
 // ============================================================
+//  State Persistence (IndexedDB + localStorage)
+// ============================================================
+const DB_NAME = 'md2pdf_db';
+const STORE_NAME = 'state';
+
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, val) {
+  try {
+    const db = await initDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).put(val, key);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) {
+    console.warn('IDB save failed:', e);
+  }
+}
+
+async function idbGet(key) {
+  try {
+    const db = await initDB();
+    return new Promise((res, rej) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).get(key);
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+  } catch (e) {
+    console.warn('IDB load failed:', e);
+    return null;
+  }
+}
+
+function saveLocalTextState() {
+  localStorage.setItem('md2pdf_editor', cm.getValue());
+  localStorage.setItem('md2pdf_pageSize', pageSizeSelect.value);
+  localStorage.setItem('md2pdf_pageNum', pageNumToggle.checked ? 'true' : 'false');
+  localStorage.setItem('md2pdf_css', customCssArea.value);
+  localStorage.setItem('md2pdf_zoom', currentZoom);
+}
+
+// ============================================================
 //  Image Store  — keep base64 out of the editor text
 //  Editor shows:  ![alt]({{img:1}})   or   <img src="{{img:2}}">
 //  At render time we swap {{img:N}} → real data URL.
 // ============================================================
-const imageStore = {};  // { '{{img:1}}': 'data:image/png;base64,...', ... }
+let imageStore = {};  // { '{{img:1}}': 'data:image/png;base64,...', ... }
 let imageCounter = 0;
 
 function storeImage(dataUrl, label) {
@@ -218,6 +273,10 @@ function storeImage(dataUrl, label) {
   const tag = label || `img:${imageCounter}`;
   const placeholder = `{{${tag}}}`;
   imageStore[placeholder] = dataUrl;
+  
+  idbSet('imageStore', imageStore);
+  idbSet('imageCounter', imageCounter);
+  
   return placeholder;
 }
 
@@ -537,7 +596,7 @@ folderInput.addEventListener('change', async (e) => {
 // ============================================================
 //  Live edit & Scroll Sync
 // ============================================================
-cm.on('change', () => scheduleRender());
+cm.on('change', () => { scheduleRender(); saveLocalTextState(); });
 
 let isSyncingLeft = false;
 let isSyncingRight = false;
@@ -614,9 +673,9 @@ function readFileAsDataURL(file) {
 // ============================================================
 //  Settings
 // ============================================================
-applyCssBtn.addEventListener('click', () => render());
-pageNumToggle.addEventListener('change', () => { if (cm.getValue().trim()) render(); });
-pageSizeSelect.addEventListener('change', () => { if (cm.getValue().trim()) render(); });
+applyCssBtn.addEventListener('click', () => { render(); saveLocalTextState(); });
+pageNumToggle.addEventListener('change', () => { if (cm.getValue().trim()) render(); saveLocalTextState(); });
+pageSizeSelect.addEventListener('change', () => { if (cm.getValue().trim()) render(); saveLocalTextState(); });
 printBtn.addEventListener('click', () => {
   const win = previewFrame.contentWindow;
   const doc = previewFrame.contentDocument;
@@ -900,3 +959,46 @@ ${bodyHtml}
 function setStatus(msg) {
   statusEl.textContent = msg;
 }
+
+// ============================================================
+//  Init: Load state on startup
+// ============================================================
+async function loadState() {
+  try {
+    // 1. Settings
+    const storedPageSize = localStorage.getItem('md2pdf_pageSize');
+    if (storedPageSize) pageSizeSelect.value = storedPageSize;
+
+    const storedPageNum = localStorage.getItem('md2pdf_pageNum');
+    if (storedPageNum) pageNumToggle.checked = (storedPageNum === 'true');
+
+    const storedCss = localStorage.getItem('md2pdf_css');
+    if (storedCss) customCssArea.value = storedCss;
+
+    const storedZoom = localStorage.getItem('md2pdf_zoom');
+    if (storedZoom) {
+      currentZoom = parseFloat(storedZoom);
+      applyZoom();
+    }
+
+    // 2. Load IDB (imageStore & counter)
+    const storedImages = await idbGet('imageStore');
+    if (storedImages) imageStore = storedImages;
+    
+    const storedCounter = await idbGet('imageCounter');
+    if (storedCounter) imageCounter = parseInt(storedCounter);
+
+    // 3. Editor text
+    const storedText = localStorage.getItem('md2pdf_editor');
+    if (storedText) {
+      cm.setValue(storedText);
+      // Rendering will happen automatically via 'change' event listener on cm.setValue
+      // But since we just added the change listener earlier, it should trigger automatically.
+      // E.g., `cm.setValue` triggers `cm.on('change')`, calling scheduleRender() & saveLocalTextState().
+    }
+  } catch (e) {
+    console.warn("Failed to restore state", e);
+  }
+}
+
+loadState();
