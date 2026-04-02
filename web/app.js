@@ -40,6 +40,24 @@ const explorerClose   = document.getElementById('explorer-close');
 const explorerToggle  = document.getElementById('explorer-toggle');
 
 // ============================================================
+//  Marked & Syntax Highlighting
+// ============================================================
+const { Marked } = window.marked;
+const { markedHighlight } = window.markedHighlight;
+
+const markedObj = new Marked(
+  markedHighlight({
+    highlight(code, lang) {
+      if (Prism.languages[lang]) {
+        return Prism.highlight(code, Prism.languages[lang], lang);
+      } else {
+        return code;
+      }
+    }
+  })
+);
+
+// ============================================================
 //  CodeMirror
 // ============================================================
 const cm = CodeMirror.fromTextArea(editorTextarea, {
@@ -906,7 +924,7 @@ async function render() {
 
   const preprocessed  = preprocessMarkdown(mdSrc);
   const withImages    = resolveImages(preprocessed);
-  const bodyHtml      = marked.parse(withImages, { gfm: true });
+  const bodyHtml      = markedObj.parse(withImages);
 
   const pageSize   = pageSizeSelect.value;
   const baseCss    = await getBundledCSS();
