@@ -72,7 +72,7 @@ h1 {
 }
 
 /* ---------- Upload ---------- */
-#upload-area {
+#upload-area, #image-upload-area, #folder-upload-area {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -87,18 +87,21 @@ h1 {
   overflow: hidden;
 }
 
-#upload-label {
+#upload-label, #folder-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-#upload-area:hover, #upload-area.drag-over {
+#upload-area:hover, #upload-area.drag-over,
+#image-upload-area:hover, #folder-upload-area:hover {
   border-color: var(--accent);
   background: var(--accent-hover);
   color: var(--accent);
 }
 
-#upload-area input[type="file"] { display: none; }
+#upload-area input[type="file"],
+#image-upload-area input[type="file"],
+#folder-upload-area input[type="file"] { display: none; }
 
 /* ---------- Options ---------- */
 .option-row {

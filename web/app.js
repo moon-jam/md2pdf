@@ -3,6 +3,9 @@
 // ============================================================
 
 const fileInput      = document.getElementById('file-input');
+const imageInput     = document.getElementById('image-input');
+const folderInput    = document.getElementById('folder-input');
+const folderLabel    = document.getElementById('folder-label');
 const uploadLabel    = document.getElementById('upload-label');
 const uploadArea     = document.getElementById('upload-area');
 const editorTextarea = document.getElementById('editor');
@@ -153,6 +156,105 @@ uploadArea.addEventListener('drop', async (e) => {
   scheduleRender();
 });
 
+imageInput.addEventListener('change', async (e) => {
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+  for (let i = 0; i < files.length; i++) {
+    await insertImageAtCursor(files[i]);
+  }
+  // reset input so the same file could be selected again if needed
+  e.target.value = '';
+});
+
+// ============================================================
+//  Image Store  — keep base64 out of the editor text
+//  Editor shows:  ![alt]({{img:1}})   or   <img src="{{img:2}}">
+//  At render time we swap {{img:N}} → real data URL.
+// ============================================================
+const imageStore = {};  // { '{{img:1}}': 'data:image/png;base64,...', ... }
+let imageCounter = 0;
+
+function storeImage(dataUrl, label) {
+  imageCounter++;
+  const tag = label || `img:${imageCounter}`;
+  const placeholder = `{{${tag}}}`;
+  imageStore[placeholder] = dataUrl;
+  return placeholder;
+}
+
+/** Replace all {{img:N}} placeholders in a string with real data URLs. */
+function resolveImages(text) {
+  return text.replace(/\{\{[^}]+\}\}/g, (m) => imageStore[m] || m);
+}
+
+// ============================================================
+//  Folder upload — resolve local image paths
+// ============================================================
+folderInput.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+
+  // 1. Find the first .md file
+  const mdFile = files.find(f => /\.(md|markdown)$/i.test(f.name));
+  if (!mdFile) {
+    alert('No .md file found in the selected folder.');
+    return;
+  }
+
+  // 2. Figure out the folder prefix
+  const mdRelPath = mdFile.webkitRelativePath;
+  const mdDir = mdRelPath.substring(0, mdRelPath.lastIndexOf('/') + 1);
+
+  // 3. Build a temporary map: relative path → base64
+  const imageExts = /\.(png|jpe?g|gif|svg|webp|bmp|ico|avif)$/i;
+  const imageFiles = files.filter(f => imageExts.test(f.name));
+
+  const pathToPlaceholder = {};
+  await Promise.all(imageFiles.map(async (imgFile) => {
+    const imgRelPath = imgFile.webkitRelativePath;
+    const relToMd = imgRelPath.startsWith(mdDir)
+      ? imgRelPath.substring(mdDir.length)
+      : imgRelPath;
+    const dataUrl = await readFileAsDataURL(imgFile);
+    // Store with a human-readable label like {{img:photo.png}}
+    const label = 'img:' + relToMd;
+    const placeholder = storeImage(dataUrl, label);
+    pathToPlaceholder[relToMd] = placeholder;
+    pathToPlaceholder['./' + relToMd] = placeholder;
+  }));
+
+  // 4. Read markdown and swap relative paths → placeholders
+  let mdText = await mdFile.text();
+
+  mdText = mdText.replace(
+    /!\[([^\]]*)\]\(([^)]+)\)/g,
+    (match, alt, src) => {
+      if (/^(https?:\/\/|data:)/i.test(src)) return match;
+      const normalized = src.replace(/^\.\//,  '');
+      const ph = pathToPlaceholder[normalized] || pathToPlaceholder['./' + normalized];
+      return ph ? `![${alt}](${ph})` : match;
+    }
+  );
+
+  mdText = mdText.replace(
+    /<img\s([^>]*?)src=["']([^"']+)["']/gi,
+    (match, before, src) => {
+      if (/^(https?:\/\/|data:)/i.test(src)) return match;
+      const normalized = src.replace(/^\.\//,  '');
+      const ph = pathToPlaceholder[normalized] || pathToPlaceholder['./' + normalized];
+      return ph ? `<img ${before}src="${ph}"` : match;
+    }
+  );
+
+  // 5. Load into editor
+  const folderName = mdRelPath.split('/')[0];
+  folderLabel.textContent = folderName;
+  uploadLabel.textContent = mdFile.name;
+  cm.setValue(mdText);
+  scheduleRender();
+  e.target.value = '';
+});
+
 // ============================================================
 //  Live edit & Scroll Sync
 // ============================================================
@@ -217,7 +319,8 @@ editorPane.addEventListener('drop', async (e) => {
 async function insertImageAtCursor(file) {
   const dataUrl = await readFileAsDataURL(file);
   const alt = file.name.replace(/\.[^.]+$/, '') || 'image';
-  cm.getDoc().replaceRange(`\n![${alt}](${dataUrl})\n`, cm.getDoc().getCursor());
+  const placeholder = storeImage(dataUrl, 'img:' + file.name);
+  cm.getDoc().replaceRange(`\n![${alt}](${placeholder})\n`, cm.getDoc().getCursor());
   scheduleRender();
 }
 
@@ -382,7 +485,8 @@ async function render() {
   setStatus('Rendering…');
 
   const preprocessed  = preprocessMarkdown(mdSrc);
-  const bodyHtml      = marked.parse(preprocessed, { gfm: true });
+  const withImages    = resolveImages(preprocessed);
+  const bodyHtml      = marked.parse(withImages, { gfm: true });
 
   const pageSize   = pageSizeSelect.value;
   const baseCss    = await getBundledCSS();
