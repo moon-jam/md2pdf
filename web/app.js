@@ -727,35 +727,17 @@ folderInput.addEventListener('change', async (e) => {
 // ============================================================
 cm.on('change', () => { scheduleRender(); saveLocalTextState(); });
 
-let isSyncingLeft = false;
-let isSyncingRight = false;
 let lastScrollPercent = 0;
 
+// CodeMirror scroll doesn't trigger anything anymore during typing,
+// but we keep the category for future simple features.
 cm.on('scroll', () => {
-  if (isSyncingLeft) {
-    isSyncingLeft = false;
-    return;
-  }
-  isSyncingRight = true;
-  const info = cm.getScrollInfo();
-  const maxScroll = info.height - info.clientHeight;
-  const percent = maxScroll > 0 ? info.top / maxScroll : 0;
-  lastScrollPercent = percent;
-  previewFrame.contentWindow?.postMessage({ type: 'editor-scroll', percent }, '*');
+  // No-op for now as per user request to disable sync
 });
 
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'preview-scroll') {
-    if (isSyncingRight) {
-      isSyncingRight = false;
-      return;
-    }
-    isSyncingLeft = true;
-    const percent = e.data.percent;
-    lastScrollPercent = percent;
-    const info = cm.getScrollInfo();
-    const maxScroll = info.height - info.clientHeight;
-    cm.scrollTo(null, percent * maxScroll);
+    lastScrollPercent = e.data.percent;
   }
 });
 
@@ -1047,6 +1029,7 @@ ${pagedCss}
   }, { passive: false });
 
   // Sync scroll from preview to editor
+  // Sync scroll from preview to parent for state persistence
   window.addEventListener('scroll', function() {
     var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
     var percent = maxScroll > 0 ? window.scrollY / maxScroll : 0;
