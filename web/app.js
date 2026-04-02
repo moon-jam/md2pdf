@@ -154,9 +154,41 @@ uploadArea.addEventListener('drop', async (e) => {
 });
 
 // ============================================================
-//  Live edit
+//  Live edit & Scroll Sync
 // ============================================================
 cm.on('change', () => scheduleRender());
+
+let isSyncingLeft = false;
+let isSyncingRight = false;
+let lastScrollPercent = 0;
+
+cm.on('scroll', () => {
+  if (isSyncingLeft) {
+    isSyncingLeft = false;
+    return;
+  }
+  isSyncingRight = true;
+  const info = cm.getScrollInfo();
+  const maxScroll = info.height - info.clientHeight;
+  const percent = maxScroll > 0 ? info.top / maxScroll : 0;
+  lastScrollPercent = percent;
+  previewFrame.contentWindow?.postMessage({ type: 'editor-scroll', percent }, '*');
+});
+
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'preview-scroll') {
+    if (isSyncingRight) {
+      isSyncingRight = false;
+      return;
+    }
+    isSyncingLeft = true;
+    const percent = e.data.percent;
+    lastScrollPercent = percent;
+    const info = cm.getScrollInfo();
+    const maxScroll = info.height - info.clientHeight;
+    cm.scrollTo(null, percent * maxScroll);
+  }
+});
 
 // ============================================================
 //  Paste / drop images into editor  →  base64 data URL
@@ -419,6 +451,13 @@ ${pagedCss}
     }
   }, { passive: false });
 
+  // Sync scroll from preview to editor
+  window.addEventListener('scroll', function() {
+    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    var percent = maxScroll > 0 ? window.scrollY / maxScroll : 0;
+    window.parent.postMessage({ type: 'preview-scroll', percent: percent }, '*');
+  }, { passive: true });
+
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'theme-change') {
       var dark = e.data.dark;
@@ -432,6 +471,9 @@ ${pagedCss}
           ? 'inset 0 0 0 1px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), 0 6px 30px rgba(255,255,255,0.05)'
           : 'inset 0 0 0 1px rgba(0,0,0,0.15), 0 4px 20px rgba(0,0,0,0.15)', 'important');
       }
+    } else if (e.data && e.data.type === 'editor-scroll') {
+      var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo(0, e.data.percent * maxScroll);
     }
   });
 <\/script>
@@ -454,6 +496,10 @@ ${bodyHtml}
       printBtn.disabled = false;
       setStatus('');
       window.removeEventListener('message', onPagedDone);
+      // Restore scroll position after a full re-render
+      setTimeout(() => {
+        previewFrame.contentWindow?.postMessage({ type: 'editor-scroll', percent: lastScrollPercent }, '*');
+      }, 50);
     }
   }
   window.addEventListener('message', onPagedDone);
