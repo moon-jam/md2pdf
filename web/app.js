@@ -591,7 +591,6 @@ function setActiveFile(filePath) {
 
 async function loadMdFromFolder(file) {
   const text = await file.text();
-  cm.setValue(text);
   
   // Keep mdDir for image path resolution matching
   const mdRelPath = file.webkitRelativePath || file.name;
@@ -603,8 +602,6 @@ async function loadMdFromFolder(file) {
   if (path.startsWith(folderRoot + '/')) path = path.substring(folderRoot.length + 1);
   editorFilename.textContent = `${folderRoot ? folderRoot + ' / ' : ''}${path}`;
   
-  setActiveFile(file.webkitRelativePath);
-  scheduleRender();
   const imageFiles = folderFiles.filter(f => IMAGE_EXTS.test(f.name));
   const pathToPlaceholder = {};
 
@@ -613,6 +610,8 @@ async function loadMdFromFolder(file) {
     const relToMd = imgRelPath.startsWith(mdDir)
       ? imgRelPath.substring(mdDir.length)
       : imgRelPath;
+    
+    // Label is relative to root if possible, or just the filename
     const label = 'img:' + (imgRelPath.startsWith(folderRoot + '/')
       ? imgRelPath.substring(folderRoot.length + 1)
       : imgRelPath);
@@ -627,32 +626,26 @@ async function loadMdFromFolder(file) {
     pathToPlaceholder['./' + relToMd] = placeholder;
   }));
 
-  // Read and transform markdown
-  let mdText = await mdFile.text();
+  // Transform markdown relative image paths to placeholders
+  let mdText = text;
+  mdText = mdText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+    if (/^(https?:\/\/|data:)/i.test(src)) return match;
+    const normalized = src.replace(/^\.\//, '');
+    const ph = pathToPlaceholder[normalized] || pathToPlaceholder['./' + normalized];
+    return ph ? `![${alt}](${ph})` : match;
+  });
 
-  mdText = mdText.replace(
-    /!\[([^\]]*)\]\(([^)]+)\)/g,
-    (match, alt, src) => {
-      if (/^(https?:\/\/|data:)/i.test(src)) return match;
-      const normalized = src.replace(/^\.\//, '');
-      const ph = pathToPlaceholder[normalized] || pathToPlaceholder['./' + normalized];
-      return ph ? `![${alt}](${ph})` : match;
-    }
-  );
+  mdText = mdText.replace(/<img\s([^>]*?)src=["']([^"']+)["']/gi, (match, before, src) => {
+    if (/^(https?:\/\/|data:)/i.test(src)) return match;
+    const normalized = src.replace(/^\.\//, '');
+    const ph = pathToPlaceholder[normalized] || pathToPlaceholder['./' + normalized];
+    return ph ? `<img ${before}src="${ph}"` : match;
+  });
 
-  mdText = mdText.replace(
-    /<img\s([^>]*?)src=["']([^"']+)["']/gi,
-    (match, before, src) => {
-      if (/^(https?:\/\/|data:)/i.test(src)) return match;
-      const normalized = src.replace(/^\.\//, '');
-      const ph = pathToPlaceholder[normalized] || pathToPlaceholder['./' + normalized];
-      return ph ? `<img ${before}src="${ph}"` : match;
-    }
-  );
-
-  uploadLabel.textContent = mdFile.name;
+  // Final editor update
+  uploadLabel.textContent = file.name;
   cm.setValue(mdText);
-  setActiveFile(mdRelPath);
+  setActiveFile(file.webkitRelativePath);
   scheduleRender();
 }
 
@@ -1079,7 +1072,9 @@ async function loadState() {
 
     // 3. Info Modal Visibility
     const hideInfo = localStorage.getItem('md2pdf_hide_info') === 'true';
-    if (hideInfo && infoModal) {
+    if (!hideInfo && infoModal) {
+      infoModal.hidden = false;
+    } else if (hideInfo && infoModal) {
       infoModal.hidden = true;
       if (infoDontShowChx) infoDontShowChx.checked = true;
     }

@@ -838,26 +838,21 @@ select:focus-visible { outline: 2px solid var(--accent); }
   border-radius: 12px;
   width: 95%;
   max-width: 650px;
-  max-height: 90vh; /* overall modal bounds */
-  position: relative;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+  max-height: 90vh; /* Allow for some space at top/bottom on small screens */
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
   animation: modalPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   color: var(--text);
-  overflow: hidden;
+  overflow: hidden; /* prevents child scroll track clipping */
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .modal-body {
-  max-height: 100%;
+  flex: 1;
   overflow-y: auto;
   padding: 30px;
   box-sizing: border-box;
-}
-  position: relative;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-  animation: modalPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  color: var(--text);
 }
 
 @keyframes modalPop {
