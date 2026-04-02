@@ -259,9 +259,4 @@ dd { margin-left: 1.5em; color: var(--color-subtle); }
   pre, blockquote, table {
     page-break-inside: avoid;
   }
-
-  a {
-    text-decoration: none;
-    color: var(--color-text);
-  }
 }
