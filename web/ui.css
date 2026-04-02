@@ -333,6 +333,24 @@ select:focus-visible { outline: 2px solid var(--accent); }
   font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
 }
 
+.load-example-btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.load-example-btn:hover {
+  background: var(--accent-hover);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 #editor {
   flex: 1;
   width: 100%;

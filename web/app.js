@@ -28,6 +28,7 @@ const infoBtn        = document.getElementById('info-btn');
 const infoModal      = document.getElementById('info-modal-overlay');
 const infoCloseBtn   = document.getElementById('info-close-btn');
 const infoDontShowChx = document.getElementById('info-dont-show');
+const loadExampleBtn = document.getElementById('load-example-btn');
 
 const sidebarResizer = document.getElementById('sidebar-resizer');
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
@@ -190,6 +191,34 @@ if (infoBtn && infoModal && infoCloseBtn) {
       localStorage.setItem('md2pdf_hide_info', e.target.checked ? 'true' : 'false');
     });
   }
+}
+
+// ============================================================
+//  Load Example Button
+// ============================================================
+async function fetchExample() {
+  try {
+    const response = await fetch('./example.md');
+    return await response.text();
+  } catch (err) {
+    console.error('Failed to load example.md', err);
+    return '';
+  }
+}
+
+if (loadExampleBtn) {
+  loadExampleBtn.addEventListener('click', async () => {
+    if (cm.getValue().trim()) {
+      if (!confirm('This will replace your current content with the example. Continue?')) return;
+    }
+    const example = await fetchExample();
+    if (example) {
+      cm.setValue(example);
+      editorFilename.textContent = 'example.md';
+      scheduleRender();
+      saveLocalTextState();
+    }
+  });
 }
 
 // ============================================================
@@ -812,6 +841,9 @@ function scheduleRender() {
   renderTimer = setTimeout(render, 350);
 }
 
+// (EXAMPLE_MD constant removed, content now in example.md)
+
+
 const PAGE_NUMBERS_CSS = `
 @page {
   @bottom-center {
@@ -835,12 +867,33 @@ const PAGEBREAK_MD_RE = /<!--\s*pagebreak\s*-->/gi;
 const PAGEBREAK_HTML_SENTINEL = '<div class="md2pdf-pagebreak"></div>';
 
 function preprocessMarkdown(raw) {
-  // Split on fenced code blocks, keeping the delimiters.
-  // Even indices → outside code blocks; odd → inside.
-  const parts = raw.split(/(^```[\s\S]*?^```|^~~~[\s\S]*?^~~~)/m);
+  // Step 1 — Resolve markdown inside HTML wrapper blocks (e.g. <div align="center">)
+  // so that *italic*, [links](), **bold** etc. are rendered correctly.
+  // We do this BEFORE splitting on fenced code blocks so we can skip code fences safely.
+  const withInlineHtml = raw.replace(
+    /(<(div|p|span|section|article|header|footer|blockquote)[^>]*>)([\s\S]*?)(<\/\2>)/gi,
+    (match, openTag, _tag, inner, closeTag) => {
+      // Skip if inner content looks like raw HTML (contains <tags>), leave it alone
+      if (/<[a-zA-Z]/.test(inner)) return match;
+      // Process each non-empty line as inline markdown
+      const processed = inner
+        .split('\n')
+        .map(line => {
+          const trimmed = line.trim();
+          if (!trimmed) return line; // preserve blank lines
+          const parsed = markedObj.parseInline(trimmed);
+          return line.replace(trimmed, parsed);
+        })
+        .join('\n');
+      return openTag + processed + closeTag;
+    }
+  );
+
+  // Step 2 — Split on fenced code blocks; protect them from further processing.
+  const parts = withInlineHtml.split(/(^```[\s\S]*?^```|^~~~[\s\S]*?^~~~)/m);
   return parts.map((part, i) => {
     if (i % 2 !== 0) return part; // inside fenced code — leave alone
-    // Protect inline code spans before replacing
+    // Protect inline code spans before replacing pagebreak tokens
     const inlines = [];
     const safe = part.replace(/`[^`]*`/g, (m) => {
       inlines.push(m);
@@ -1101,9 +1154,14 @@ async function loadState() {
     const storedText = localStorage.getItem('md2pdf_editor');
     if (storedText) {
       cm.setValue(storedText);
-      // Rendering will happen automatically via 'change' event listener on cm.setValue
-      // But since we just added the change listener earlier, it should trigger automatically.
-      // E.g., `cm.setValue` triggers `cm.on('change')`, calling scheduleRender() & saveLocalTextState().
+    } else {
+      // First visit — show the feature demo
+      const example = await fetchExample();
+      if (example) {
+        cm.setValue(example);
+        editorFilename.textContent = 'example.md';
+        scheduleRender();
+      }
     }
   } catch (e) {
     console.warn("Failed to restore state", e);
