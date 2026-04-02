@@ -63,7 +63,6 @@ if (!fs.existsSync(inputAbs)) {
 }
 
 const inputDir  = path.dirname(inputAbs);
-const inputFile = path.basename(inputAbs);   // relative to config (which lives in inputDir)
 const inputBase = path.basename(inputAbs, path.extname(inputAbs));
 
 const outputAbs = argv.output
@@ -82,7 +81,6 @@ if (!fs.existsSync(styleAbs)) {
 }
 
 const docTitle  = argv.title ?? inputBase;
-const prismPath = require.resolve('markdown-it-prism');
 const timestamp = Date.now();
 
 const PAGE_NUMBERS_CSS = `
@@ -97,9 +95,41 @@ const PAGE_NUMBERS_CSS = `
 `;
 
 // ---------------------------------------------------------------------------
-// Write a temporary vivliostyle.config.js next to the input file.
+// Preprocess markdown: replace <!-- pagebreak --> with a CSS page-break div.
+//
+// NOTE: vivliostyle-cli uses VFM (Vivliostyle Flavored Markdown) which is
+// built on unified/remark — NOT markdown-it. The `vfm.customPlugins` key
+// does not exist in vivliostyle-cli's config schema, and markdown-it
+// renderer hooks have no effect here. Pre-processing the source file is
+// the only reliable approach.
+// ---------------------------------------------------------------------------
+const PAGEBREAK_RE = /<!--\s*pagebreak\s*-->/gi;
+const PAGEBREAK_DIV = '<div style="break-before: page;"></div>';
+
+function preprocessMarkdown(srcPath) {
+  const raw = fs.readFileSync(srcPath, 'utf8');
+  // Split on fenced code blocks (``` or ~~~), preserving the delimiters.
+  // Even-indexed segments are outside code blocks; odd-indexed are inside.
+  const parts = raw.split(/(^```[\s\S]*?^```|^~~~[\s\S]*?^~~~)/m);
+  return parts.map((part, i) => {
+    if (i % 2 !== 0) return part; // inside fenced code block — skip
+    // For non-code segments, protect inline code spans before replacing
+    const inlines = [];
+    const safe = part.replace(/`[^`]*`/g, (m) => { inlines.push(m); return `\x00${inlines.length - 1}\x00`; });
+    const replaced = safe.replace(PAGEBREAK_RE, PAGEBREAK_DIV);
+    return replaced.replace(/\x00(\d+)\x00/g, (_, idx) => inlines[idx]);
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Write temp files next to the input file.
 // ---------------------------------------------------------------------------
 const tmpConfig = path.join(inputDir, `.md2pdf_tmp_${timestamp}.js`);
+const tmpMdName = `.md2pdf_tmp_${timestamp}.md`;
+const tmpMdAbs  = path.join(inputDir, tmpMdName);
+
+// Write the preprocessed markdown (pagebreaks already expanded)
+fs.writeFileSync(tmpMdAbs, preprocessMarkdown(inputAbs), 'utf8');
 
 // In preview mode, vivliostyle's dev server serves theme CSS under /vivliostyle/
 // (not the document root), causing 404. Workaround: copy CSS next to the input
@@ -117,21 +147,7 @@ module.exports = {
   title: ${JSON.stringify(docTitle)},
   language: ${JSON.stringify(argv.language)},
   size: ${JSON.stringify(argv.size)},
-  entry: [{ path: ${JSON.stringify(inputFile)}, title: ${JSON.stringify(docTitle)} }],
-  vfm: {
-    customPlugins: [
-      require(${JSON.stringify(prismPath)}),
-      function pagebreakPlugin(md) {
-        var orig = md.renderer.rules.html_block;
-        md.renderer.rules.html_block = function(tokens, idx, options, env, self) {
-          if (/<!--\\s*pagebreak\\s*-->/i.test(tokens[idx].content)) {
-            return '<div style="break-before: page;"></div>\\n';
-          }
-          return orig ? orig(tokens, idx, options, env, self) : tokens[idx].content;
-        };
-      }
-    ],
-  },
+  entry: [{ path: ${JSON.stringify(tmpMdName)}, title: ${JSON.stringify(docTitle)} }],
 };
 `;
   fs.writeFileSync(tmpConfig, configContent, 'utf8');
@@ -150,22 +166,8 @@ module.exports = {
   language: ${JSON.stringify(argv.language)},
   size: ${JSON.stringify(argv.size)},
   theme: ${JSON.stringify('./' + tmpStyleName)},
-  entry: [{ path: ${JSON.stringify(inputFile)}, title: ${JSON.stringify(docTitle)} }],
+  entry: [{ path: ${JSON.stringify(tmpMdName)}, title: ${JSON.stringify(docTitle)} }],
   output: [${JSON.stringify(outputAbs)}],
-  vfm: {
-    customPlugins: [
-      require(${JSON.stringify(prismPath)}),
-      function pagebreakPlugin(md) {
-        var orig = md.renderer.rules.html_block;
-        md.renderer.rules.html_block = function(tokens, idx, options, env, self) {
-          if (/<!--\\s*pagebreak\\s*-->/i.test(tokens[idx].content)) {
-            return '<div style="break-before: page;"></div>\\n';
-          }
-          return orig ? orig(tokens, idx, options, env, self) : tokens[idx].content;
-        };
-      }
-    ],
-  },
 };
 `;
   fs.writeFileSync(tmpConfig, configContent, 'utf8');
@@ -177,6 +179,7 @@ module.exports = {
 // ---------------------------------------------------------------------------
 function cleanup() {
   try { fs.unlinkSync(tmpConfig); } catch (_) {}
+  try { fs.unlinkSync(tmpMdAbs); } catch (_) {}
   if (tmpStyleAbs) { try { fs.unlinkSync(tmpStyleAbs); } catch (_) {} }
 }
 
@@ -196,9 +199,9 @@ const vivliostyleBin = path.join(__dirname, '..', 'node_modules', '.bin', 'vivli
 const cli = fs.existsSync(vivliostyleBin) ? vivliostyleBin : 'vivliostyle';
 
 if (argv.watch) {
-  console.log(`👀  Starting Live Preview for ${inputFile}...`);
+  console.log(`👀  Starting Live Preview for ${inputBase}.md...`);
 } else {
-  console.log(`📄  ${inputFile}  →  ${outputAbs}`);
+  console.log(`📄  ${inputBase}.md  →  ${outputAbs}`);
 }
 
 const result = spawnSync(cli, vivliostyleArgs, { stdio: 'inherit', cwd: inputDir });

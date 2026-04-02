@@ -14,6 +14,10 @@
 - **Print Ready**: Auto-prevents awkward page breaks inside code blocks, tables, and paragraphs.
 - **Offline & Cross-Platform**: Works fully offline after the first run (downloads headless Chromium automatically).
 
+## 📄 Example Output
+
+Curious what the result looks like? Check out [README.pdf](README.pdf) — this README itself, converted with `md2pdf`!
+
 ## 🛠 Installation
 
 Requires Node.js 18 or newer.
@@ -64,6 +68,7 @@ md2pdf --help
 | `--size` | | PDF paper size (A4, Letter, B5, etc) | `A4` |
 | `--title` | | Title of the generated PDF document | Base filename |
 | `--language`| | Language metadata code | `zh-TW` |
+| `--page-numbers` | `-p` | Show page numbers in the footer | `false` |
 
 ## 💡 Tips & Tricks
 
