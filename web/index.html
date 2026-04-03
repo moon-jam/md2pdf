@@ -142,10 +142,8 @@
   <div id="resizer"></div>
 
   <div id="preview-pane">
-    <div id="preview-loading" hidden>
-      <div class="spinner"></div>
-    </div>
-    <iframe id="preview-frame" title="PDF Preview"></iframe>
+    <iframe id="preview-frame-a" class="preview-frame is-active" title="PDF Preview"></iframe>
+    <iframe id="preview-frame-b" class="preview-frame" title="PDF Preview (buffer)" aria-hidden="true"></iframe>
   </div>
 
   <div id="info-modal-overlay" class="modal-overlay" hidden>

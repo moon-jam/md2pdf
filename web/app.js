@@ -10,8 +10,8 @@ const uploadLabel    = document.getElementById('upload-label');
 const uploadArea     = document.getElementById('upload-area');
 const editorTextarea = document.getElementById('editor');
 const editorPane     = document.getElementById('editor-pane');
-const previewFrame   = document.getElementById('preview-frame');
-const previewLoading = document.getElementById('preview-loading');
+const previewFrameA  = document.getElementById('preview-frame-a');
+const previewFrameB  = document.getElementById('preview-frame-b');
 const pageSizeSelect = document.getElementById('page-size');
 const pageNumToggle  = document.getElementById('page-numbers-toggle');
 const customCssArea  = document.getElementById('custom-css');
@@ -41,6 +41,45 @@ const fileExplorer    = document.getElementById('file-explorer');
 const fileTree        = document.getElementById('file-tree');
 const explorerClose   = document.getElementById('explorer-close');
 const explorerToggle  = document.getElementById('explorer-toggle');
+
+let activePreviewFrame = previewFrameA;
+let stagingPreviewFrame = previewFrameB;
+let pendingPagedDoneHandler = null;
+let renderFallbackTimer = null;
+let currentRenderId = 0;
+
+function setPreviewPointerEvents(value) {
+  previewFrameA.style.pointerEvents = value;
+  previewFrameB.style.pointerEvents = value;
+}
+
+function getActivePreviewFrame() {
+  return activePreviewFrame;
+}
+
+function swapPreviewFrames() {
+  const prevActive = activePreviewFrame;
+  activePreviewFrame = stagingPreviewFrame;
+  stagingPreviewFrame = prevActive;
+  activePreviewFrame.classList.add('is-active');
+  stagingPreviewFrame.classList.remove('is-active');
+}
+
+function postToPreviewFrames(message) {
+  previewFrameA.contentWindow?.postMessage(message, '*');
+  previewFrameB.contentWindow?.postMessage(message, '*');
+}
+
+function clearRenderWaiters() {
+  if (pendingPagedDoneHandler) {
+    window.removeEventListener('message', pendingPagedDoneHandler);
+    pendingPagedDoneHandler = null;
+  }
+  if (renderFallbackTimer) {
+    clearTimeout(renderFallbackTimer);
+    renderFallbackTimer = null;
+  }
+}
 
 // ============================================================
 //  Status bar — word count + page count
@@ -299,17 +338,25 @@ const cm = CodeMirror.fromTextArea(editorTextarea, {
 // ============================================================
 //  Theme toggle & System Theme Detection
 // ============================================================
-const darkBgColors = '#000000'; // Pure black for better contrast with white paper
+function getPreviewBackgroundColor() {
+  const paneBg = getComputedStyle(previewPane).backgroundColor;
+  if (paneBg && paneBg !== 'rgba(0, 0, 0, 0)') return paneBg;
+  const fallback = getComputedStyle(document.documentElement)
+    .getPropertyValue('--preview-bg')
+    .trim();
+  return fallback || '#e8eaed';
+}
 
 function applyTheme(isDark) {
   themeToggle.checked = isDark;
   document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  const previewBg = getPreviewBackgroundColor();
   // Notify the iframe so it can update its background without a full re-render
-  previewFrame.contentWindow?.postMessage({
+  postToPreviewFrames({
     type: 'theme-change',
     dark: isDark,
-    bg: isDark ? darkBgColors : '#c8ccd0',
-  }, '*');
+    bg: previewBg,
+  });
 }
 
 // 1. Detect System Theme on load
@@ -338,7 +385,7 @@ resizerEl.addEventListener('mousedown', () => {
   document.body.classList.add('is-resizing');
   document.body.style.cursor = 'col-resize';
   resizerEl.classList.add('resizing');
-  previewFrame.style.pointerEvents = 'none';
+  setPreviewPointerEvents('none');
 });
 
 // 2. Sidebar <-> Editor Resizer
@@ -348,7 +395,7 @@ if (sidebarResizer) {
     document.body.classList.add('is-resizing');
     document.body.style.cursor = 'col-resize';
     sidebarResizer.classList.add('resizing');
-    previewFrame.style.pointerEvents = 'none';
+    setPreviewPointerEvents('none');
   });
 }
 
@@ -385,7 +432,7 @@ document.addEventListener('mouseup', () => {
     document.body.style.cursor = '';
     resizerEl.classList.remove('resizing');
     if (sidebarResizer) sidebarResizer.classList.remove('resizing');
-    previewFrame.style.pointerEvents = '';
+    setPreviewPointerEvents('');
   }
 });
 
@@ -494,7 +541,7 @@ let currentZoom = 0.5;
 function applyZoom() {
   zoomLevelTxt.textContent = Math.round(currentZoom * 100) + '%';
   try {
-    const doc = previewFrame.contentDocument;
+    const doc = getActivePreviewFrame().contentDocument;
     if (doc) {
       // Zooming the inner container instead of body fixes flex centering issues in Webkit
       const pagesContainer = doc.querySelector('.pagedjs_pages');
@@ -522,6 +569,7 @@ zoomOutBtn.addEventListener('click', () => {
 // ============================================================
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'pinch-zoom') {
+    if (e.source !== getActivePreviewFrame().contentWindow) return;
     const factor = 1 - e.data.delta * 0.005;
     currentZoom = Math.max(0.25, Math.min(4, +(currentZoom * factor).toFixed(3)));
     applyZoom();
@@ -968,6 +1016,7 @@ cm.on('scroll', () => {
 
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'preview-scroll') {
+    if (e.source !== getActivePreviewFrame().contentWindow) return;
     lastScrollPercent = e.data.percent;
   }
 });
@@ -1015,14 +1064,15 @@ function readFileAsDataURL(file) {
 // ============================================================
 //  Settings
 // ============================================================
-applyCssBtn.addEventListener('click', () => { render(); saveLocalTextState(); });
-pageNumToggle.addEventListener('change', () => { if (cm.getValue().trim()) render(); saveLocalTextState(); });
-pageSizeSelect.addEventListener('change', () => { if (cm.getValue().trim()) render(); saveLocalTextState(); });
+applyCssBtn.addEventListener('click', () => { queueRender(true); saveLocalTextState(); });
+pageNumToggle.addEventListener('change', () => { if (cm.getValue().trim()) queueRender(true); saveLocalTextState(); });
+pageSizeSelect.addEventListener('change', () => { if (cm.getValue().trim()) queueRender(true); saveLocalTextState(); });
 printBtn.addEventListener('click', () => {
   mascotFlyAwayAndReturn();
 
-  const win = previewFrame.contentWindow;
-  const doc = previewFrame.contentDocument;
+  const activeFrame = getActivePreviewFrame();
+  const win = activeFrame.contentWindow;
+  const doc = activeFrame.contentDocument;
   if (!win || !doc) return;
 
   const filename = docTitle.value.trim() || 'document';
@@ -1074,6 +1124,12 @@ if (printZone) {
 // ============================================================
 let bundledCSS  = null;
 let renderTimer = null;
+let renderInFlight = false;
+let renderQueued = false;
+let lastRenderKey = '';
+
+const RENDER_DEBOUNCE_MS = 250;
+const RENDER_AFTER_INFLIGHT_MS = 80;
 
 async function getBundledCSS() {
   if (bundledCSS) return bundledCSS;
@@ -1082,9 +1138,48 @@ async function getBundledCSS() {
   return bundledCSS;
 }
 
-function scheduleRender() {
+function getRenderKey(rawMd) {
+  return [
+    rawMd,
+    pageSizeSelect.value,
+    pageNumToggle.checked ? '1' : '0',
+    customCssArea.value,
+  ].join('\u0001');
+}
+
+function flushQueuedRender() {
+  if (!renderQueued) return;
+  renderQueued = false;
   clearTimeout(renderTimer);
-  renderTimer = setTimeout(render, 350);
+  renderTimer = setTimeout(() => {
+    if (renderInFlight) {
+      renderQueued = true;
+      return;
+    }
+    render();
+  }, RENDER_AFTER_INFLIGHT_MS);
+}
+
+function finishRenderCycle() {
+  renderInFlight = false;
+  flushQueuedRender();
+}
+
+function queueRender(immediate = false) {
+  clearTimeout(renderTimer);
+  if (renderInFlight) {
+    renderQueued = true;
+    return;
+  }
+  if (immediate) {
+    render();
+    return;
+  }
+  renderTimer = setTimeout(render, RENDER_DEBOUNCE_MS);
+}
+
+function scheduleRender() {
+  queueRender(false);
 }
 
 // (EXAMPLE_MD constant removed, content now in example.md)
@@ -1152,8 +1247,7 @@ function preprocessMarkdown(raw) {
 
 // CSS that powers the page-break sentinel AND the Paged.js visual layout.
 // isDark is passed in at render time so the iframe background matches the theme.
-function getPagedScreenCss(isDark) {
-  const viewerBg = isDark ? '#000000' : '#c8ccd0';
+function getPagedScreenCss(isDark, viewerBg) {
   // Use inset box-shadow as border — actual `border:1px` disappears at 50% zoom.
   // Inset shadow renders properly at any zoom level.
   const pageBoxShadow = isDark
@@ -1206,42 +1300,60 @@ function getPagedScreenCss(isDark) {
 }
 
 async function render() {
-  const mdSrc = cm.getValue().trim();
+  if (renderInFlight) {
+    renderQueued = true;
+    return;
+  }
+
+  renderInFlight = true;
+
+  const rawMd = cm.getValue();
+  const mdSrc = rawMd.trim();
+  const renderKey = getRenderKey(rawMd);
+  clearRenderWaiters();
+  const renderId = ++currentRenderId;
 
   // Empty editor → clear preview, hide everything
   if (!mdSrc) {
-    previewLoading.hidden = true;
-    previewFrame.srcdoc = '';
+    getActivePreviewFrame().srcdoc = '';
+    stagingPreviewFrame.srcdoc = '';
     printBtn.disabled = true;
     previewPane.classList.add('is-empty');
     isRendering = false;
     lastPageCount = 0;
+    lastRenderKey = '';
     statusEl.innerHTML = '';
+    finishRenderCycle();
     return;
   }
 
-  previewPane.classList.remove('is-empty');
-  previewLoading.hidden = false;
-  printBtn.disabled = true;
-  isRendering = true;
-  showRenderingDots();
+  if (renderKey === lastRenderKey) {
+    finishRenderCycle();
+    return;
+  }
 
-  const preprocessed  = preprocessMarkdown(mdSrc);
-  const withImages    = resolveImages(preprocessed);
-  const bodyHtml      = markedObj.parse(withImages);
+  try {
+    previewPane.classList.remove('is-empty');
+    printBtn.disabled = true;
+    isRendering = true;
+    showRenderingDots();
 
-  const pageSize   = pageSizeSelect.value;
-  const baseCss    = await getBundledCSS();
-  const pageAtRule = `@page { size: ${pageSize}; margin: 20mm 22mm 20mm 22mm; }`;
-  const extraCss   = customCssArea.value.trim();
-  const pageNumCss = pageNumToggle.checked ? PAGE_NUMBERS_CSS : '';
+    const preprocessed  = preprocessMarkdown(mdSrc);
+    const withImages    = resolveImages(preprocessed);
+    const bodyHtml      = markedObj.parse(withImages);
 
-  const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
-  const pagedCss  = getPagedScreenCss(isDark);
-  const initBg    = isDark ? '#000000' : '#c8ccd0';
+    const pageSize   = pageSizeSelect.value;
+    const baseCss    = await getBundledCSS();
+    const pageAtRule = `@page { size: ${pageSize}; margin: 20mm 22mm 20mm 22mm; }`;
+    const extraCss   = customCssArea.value.trim();
+    const pageNumCss = pageNumToggle.checked ? PAGE_NUMBERS_CSS : '';
 
-  // Build the full document that goes into the iframe.
-  const fullDoc = `<!DOCTYPE html>
+    const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
+    const viewerBg  = getPreviewBackgroundColor();
+    const pagedCss  = getPagedScreenCss(isDark, viewerBg);
+
+    // Build the full document that goes into the iframe.
+    const fullDoc = `<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -1333,37 +1445,54 @@ ${bodyHtml}
 </body>
 </html>`;
 
-  // Clean up any previous message listener
-  window.removeEventListener('message', onPagedDone);
+    const targetFrame = stagingPreviewFrame;
 
-  previewFrame.srcdoc = fullDoc;
-
-  // Hide loading when Paged.js signals it's done
-  function onPagedDone(e) {
-    if (e.data?.type === 'pagedjs-done') {
-      previewLoading.hidden = true;
+    function finishRender(pageCount) {
+      if (renderId !== currentRenderId) return;
+      clearRenderWaiters();
+      swapPreviewFrames();
       printBtn.disabled = false;
       isRendering = false;
-      lastPageCount = e.data.pages || 0;
+      if (typeof pageCount === 'number' && pageCount > 0) {
+        lastPageCount = pageCount;
+      }
+      lastRenderKey = renderKey;
       updateStatusInfo();
       mascotDo('celebrate');
-      window.removeEventListener('message', onPagedDone);
+      finishRenderCycle();
       setTimeout(() => {
-        previewFrame.contentWindow?.postMessage({ type: 'editor-scroll', percent: lastScrollPercent }, '*');
+        getActivePreviewFrame().contentWindow?.postMessage({ type: 'editor-scroll', percent: lastScrollPercent }, '*');
       }, 50);
     }
-  }
-  window.addEventListener('message', onPagedDone);
 
-  // Fallback: if Paged.js never fires (e.g. no network), clear after 5s
-  previewFrame.onload = () => {
-    setTimeout(() => {
-      previewLoading.hidden = true;
-      printBtn.disabled = false;
-      isRendering = false;
-      updateStatusInfo();
-    }, 5000);
-  };
+    // Hide loading when Paged.js signals it's done from the staging frame.
+    pendingPagedDoneHandler = function onPagedDone(e) {
+      if (renderId !== currentRenderId) return;
+      if (e.source !== targetFrame.contentWindow) return;
+      if (e.data?.type === 'pagedjs-done') {
+        finishRender(e.data.pages || 0);
+      }
+    };
+    window.addEventListener('message', pendingPagedDoneHandler);
+
+    targetFrame.srcdoc = fullDoc;
+
+    // Fallback: if Paged.js never fires (e.g. no network), clear after 5s
+    targetFrame.onload = () => {
+      if (renderId !== currentRenderId) return;
+      if (renderFallbackTimer) clearTimeout(renderFallbackTimer);
+      renderFallbackTimer = setTimeout(() => {
+        finishRender(lastPageCount || 0);
+      }, 5000);
+    };
+  } catch (err) {
+    console.error('Render failed:', err);
+    clearRenderWaiters();
+    printBtn.disabled = false;
+    isRendering = false;
+    updateStatusInfo();
+    finishRenderCycle();
+  }
 }
 
 
