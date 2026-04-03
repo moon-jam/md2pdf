@@ -1021,6 +1021,39 @@ cm.on('change', () => { scheduleRender(); updateTitleFromH1(cm.getValue()); save
 
 let lastScrollPercent = 0;
 
+function clampScrollPercent(percent) {
+  const n = Number(percent);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function applyScrollPercentToFrame(frame, percent) {
+  const win = frame?.contentWindow;
+  const doc = frame?.contentDocument;
+  if (!win || !doc) return;
+
+  const safePercent = clampScrollPercent(percent);
+  const scrollRoot = doc.scrollingElement || doc.documentElement;
+  if (!scrollRoot) return;
+
+  const maxScroll = Math.max(0, scrollRoot.scrollHeight - win.innerHeight);
+  win.scrollTo(0, safePercent * maxScroll);
+}
+
+function afterFramePaint(frame, callback) {
+  const win = frame?.contentWindow;
+  const raf = (fn) => {
+    if (win && typeof win.requestAnimationFrame === 'function') {
+      win.requestAnimationFrame(fn);
+    } else {
+      requestAnimationFrame(fn);
+    }
+  };
+
+  // Double RAF gives the browser one full paint cycle to settle layout/scroll.
+  raf(() => raf(callback));
+}
+
 // CodeMirror scroll doesn't trigger anything anymore during typing,
 // but we keep the category for future simple features.
 cm.on('scroll', () => {
@@ -1030,7 +1063,7 @@ cm.on('scroll', () => {
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'preview-scroll') {
     if (e.source !== getActivePreviewFrame().contentWindow) return;
-    lastScrollPercent = e.data.percent;
+    lastScrollPercent = clampScrollPercent(e.data.percent);
   }
 });
 
@@ -1464,20 +1497,25 @@ ${bodyHtml}
     function finishRender(pageCount) {
       if (renderId !== currentRenderId) return;
       clearRenderWaiters();
-      swapPreviewFrames();
-      printBtn.disabled = false;
-      isRendering = false;
-      setMascotRendering(false);
-      if (typeof pageCount === 'number' && pageCount > 0) {
-        lastPageCount = pageCount;
-      }
-      lastRenderKey = renderKey;
-      updateStatusInfo();
-      mascotDo('celebrate');
-      finishRenderCycle();
-      setTimeout(() => {
-        getActivePreviewFrame().contentWindow?.postMessage({ type: 'editor-scroll', percent: lastScrollPercent }, '*');
-      }, 50);
+      const targetScrollPercent = clampScrollPercent(lastScrollPercent);
+      applyScrollPercentToFrame(targetFrame, targetScrollPercent);
+
+      afterFramePaint(targetFrame, () => {
+        if (renderId !== currentRenderId) return;
+
+        swapPreviewFrames();
+        printBtn.disabled = false;
+        isRendering = false;
+        setMascotRendering(false);
+        if (typeof pageCount === 'number' && pageCount > 0) {
+          lastPageCount = pageCount;
+        }
+        lastRenderKey = renderKey;
+        lastScrollPercent = targetScrollPercent;
+        updateStatusInfo();
+        mascotDo('celebrate');
+        finishRenderCycle();
+      });
     }
 
     // Hide loading when Paged.js signals it's done from the staging frame.
