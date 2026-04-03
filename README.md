@@ -7,11 +7,13 @@
 
 ---
 
+https://github.com/user-attachments/assets/82c6781a-c8ed-4e33-8713-ea0f95bc0cf6
+
 ## Why md2pdf
 
 The key difference: preview shows real PDF pagination with actual margins, not just styled HTML. Code blocks stay intact across page boundaries. What you see is what you export.
 
-Built on Paged.js for the layout engine, Prism.js (Catppuccin Mocha) for syntax highlighting, and Noto fonts for Chinese typography.
+Built on [Paged.js](https://pagedjs.org/) for live preview layout, [Vivliostyle](https://vivliostyle.org/) for CLI PDF generation, [Prism.js](https://prismjs.com/) (Catppuccin Mocha) for syntax highlighting, and Noto fonts for Chinese typography.
 
 ## Choose Your Workflow
 
@@ -32,6 +34,8 @@ Pure frontend: your content stays in your browser, with no server upload.
 ### CLI (local + scripting)
 
 For local use or scripting.
+
+CLI output is powered by [Vivliostyle](https://vivliostyle.org/).
 
 **Requirements:** Node.js 18+
 

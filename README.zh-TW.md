@@ -7,13 +7,15 @@
 
 ---
 
+https://github.com/user-attachments/assets/82c6781a-c8ed-4e33-8713-ea0f95bc0cf6
+
 ## 為什麼用 md2pdf
 
 和一般 Markdown 預覽最大的差別是：你在畫面上看到的分頁、頁邊距，幾乎就是最後輸出的 PDF 樣子，不用匯出後再回來猜版面。
 
 程式碼區塊也不會在換頁時被切成兩段，文件比較不會出現突兀的分割。
 
-底層使用 Paged.js 負責排版，Prism.js（Catppuccin Mocha 主題）負責 syntax highlighting，並內建 Noto 字型來支援中文排版。
+底層使用 [Paged.js](https://pagedjs.org/) 負責網頁即時預覽排版，CLI 的 PDF 輸出使用 [Vivliostyle](https://vivliostyle.org/)，[Prism.js](https://prismjs.com/)（Catppuccin Mocha 主題）負責 syntax highlighting，並內建 Noto 字型來支援中文排版。
 
 ## 使用方式
 
@@ -34,6 +36,8 @@
 ### 命令列工具（本機與自動化）
 
 適合本機轉檔、批次處理，或整合進 CI / 自動化流程。
+
+CLI 輸出使用 [Vivliostyle](https://vivliostyle.org/) 生成。
 
 **需求：** Node.js 18 以上
 
@@ -81,7 +85,7 @@ md2pdf report.md --style my_theme.css
 | `--language`     |      | 語言中繼資料       | `zh-TW`               |
 | `--page-numbers` | `-p` | 頁尾顯示頁碼       | `false`               |
 
-## 樣式客製
+## 自訂樣式
 
 內建的 `style.css` 會控制整體外觀：字型、間距、syntax highlighting 顏色和頁面版面。你可以直接改，改完重新執行就會套用。
 
