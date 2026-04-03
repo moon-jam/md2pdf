@@ -19,6 +19,7 @@ const applyCssBtn    = document.getElementById('apply-css');
 const printBtn       = document.getElementById('print-btn');
 const statusEl       = document.getElementById('status');
 const resizerEl      = document.getElementById('resizer');
+const previewPane    = document.getElementById('preview-pane');
 const zoomInBtn      = document.getElementById('zoom-in');
 const zoomOutBtn     = document.getElementById('zoom-out');
 const zoomLevelTxt   = document.getElementById('zoom-level');
@@ -39,6 +40,22 @@ const fileExplorer    = document.getElementById('file-explorer');
 const fileTree        = document.getElementById('file-tree');
 const explorerClose   = document.getElementById('explorer-close');
 const explorerToggle  = document.getElementById('explorer-toggle');
+
+// ============================================================
+//  Status bar — word count + page count
+// ============================================================
+let lastPageCount = 0;
+let isRendering   = false;
+
+function updateStatusInfo() {
+  if (isRendering) return;
+  if (!cm.getValue().trim()) { setStatus(''); return; }
+  if (lastPageCount) {
+    setStatus(`${lastPageCount} page${lastPageCount !== 1 ? 's' : ''}`);
+  } else {
+    setStatus('');
+  }
+}
 
 // ============================================================
 //  Marked & Syntax Highlighting
@@ -205,6 +222,10 @@ if (infoBtn && infoModal && infoCloseBtn) {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !infoModal.hidden) closeInfoModal();
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      if (!printBtn.disabled) printBtn.click();
+    }
   });
   
   if (infoDontShowChx) {
@@ -978,12 +999,17 @@ async function render() {
     previewLoading.hidden = true;
     previewFrame.srcdoc = '';
     printBtn.disabled = true;
+    previewPane.classList.add('is-empty');
+    isRendering = false;
+    lastPageCount = 0;
     setStatus('');
     return;
   }
 
+  previewPane.classList.remove('is-empty');
   previewLoading.hidden = false;
   printBtn.disabled = true;
+  isRendering = true;
   setStatus('Rendering…');
 
   const preprocessed  = preprocessMarkdown(mdSrc);
@@ -1047,7 +1073,8 @@ ${pagedCss}
           pages[j].style.setProperty('margin', '0 auto 32px auto', 'important');
       }
 
-      window.parent.postMessage({ type: 'pagedjs-done' }, '*');
+      var pageCount = document.querySelectorAll('.pagedjs_page').length;
+      window.parent.postMessage({ type: 'pagedjs-done', pages: pageCount }, '*');
     }
   };
 
@@ -1102,9 +1129,10 @@ ${bodyHtml}
     if (e.data?.type === 'pagedjs-done') {
       previewLoading.hidden = true;
       printBtn.disabled = false;
-      setStatus('');
+      isRendering = false;
+      lastPageCount = e.data.pages || 0;
+      updateStatusInfo();
       window.removeEventListener('message', onPagedDone);
-      // Restore scroll position after a full re-render
       setTimeout(() => {
         previewFrame.contentWindow?.postMessage({ type: 'editor-scroll', percent: lastScrollPercent }, '*');
       }, 50);
@@ -1117,7 +1145,8 @@ ${bodyHtml}
     setTimeout(() => {
       previewLoading.hidden = true;
       printBtn.disabled = false;
-      setStatus('');
+      isRendering = false;
+      updateStatusInfo();
     }, 5000);
   };
 }
@@ -1180,6 +1209,9 @@ async function loadState() {
         titleEditedByUser = false;
         cm.setValue(example);
         scheduleRender();
+      } else {
+        // Fetch failed — show empty-state hint
+        previewPane.classList.add('is-empty');
       }
     }
   } catch (e) {
