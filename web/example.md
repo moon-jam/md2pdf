@@ -49,11 +49,11 @@ class Point:
 
 ## Page breaks
 
-Add `<!-- pagebreak -->` to force a new page. The next section starts on page 2:
+Add `<!-- pagebreak -->` to force a new page. The next section starts on next page:
 
 <!-- pagebreak -->
 
-## Page 2
+## Next Page
 
 The `<!-- pagebreak -->` before this heading pushed it to a new page. Handy for title pages, chapter separators, appendices.
 
