@@ -111,10 +111,22 @@ function clearMascotTimers() {
   clearTimeout(mascotIdleTimer);
 }
 
-function showRenderingDots() {
-  clearMascotTimers();
-  mascotMoverEl = mascotGuyEl = mascotBodyEl = null;
-  statusEl.innerHTML = '<div class="status-dots"><div class="status-dot"></div><div class="status-dot"></div><div class="status-dot"></div></div>';
+function setMascotRendering(rendering) {
+  if (rendering) {
+    if (!mascotAlive()) buildMascot(lastPageCount || '?');
+    if (!mascotAlive()) return;
+    clearMascotTimers();
+    statusEl.classList.add('is-rendering');
+    mascotGuyEl.classList.remove('walking');
+    mascotGuyEl.classList.add('running', 'loading');
+    return;
+  }
+
+  statusEl.classList.remove('is-rendering');
+  if (!mascotAlive()) return;
+  mascotGuyEl.classList.remove('walking', 'running', 'loading');
+  scheduleMascotMove();
+  scheduleMascotIdle();
 }
 
 function buildMascot(n) {
@@ -274,6 +286,7 @@ function mascotFlyAwayAndReturn() {
 function updateStatusInfo() {
   if (isRendering) return;
   if (!cm.getValue().trim()) {
+    statusEl.classList.remove('is-rendering');
     clearMascotTimers();
     mascotMoverEl = mascotGuyEl = mascotBodyEl = null;
     statusEl.innerHTML = '';
@@ -1322,6 +1335,7 @@ async function render() {
     isRendering = false;
     lastPageCount = 0;
     lastRenderKey = '';
+    statusEl.classList.remove('is-rendering');
     statusEl.innerHTML = '';
     finishRenderCycle();
     return;
@@ -1336,7 +1350,7 @@ async function render() {
     previewPane.classList.remove('is-empty');
     printBtn.disabled = true;
     isRendering = true;
-    showRenderingDots();
+    setMascotRendering(true);
 
     const preprocessed  = preprocessMarkdown(mdSrc);
     const withImages    = resolveImages(preprocessed);
@@ -1453,6 +1467,7 @@ ${bodyHtml}
       swapPreviewFrames();
       printBtn.disabled = false;
       isRendering = false;
+      setMascotRendering(false);
       if (typeof pageCount === 'number' && pageCount > 0) {
         lastPageCount = pageCount;
       }
@@ -1490,6 +1505,7 @@ ${bodyHtml}
     clearRenderWaiters();
     printBtn.disabled = false;
     isRendering = false;
+    setMascotRendering(false);
     updateStatusInfo();
     finishRenderCycle();
   }

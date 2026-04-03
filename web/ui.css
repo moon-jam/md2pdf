@@ -440,9 +440,22 @@ select:focus-visible { outline: 2px solid var(--accent); }
 .mascot-guy.celebrate { animation: mascot-celebrate 0.9s  ease; }
 .mascot-guy.flying    { animation: mascot-fly       0.62s cubic-bezier(0.35, 1, 0.65, 1); }
 
+#status.is-rendering .mascot-guy.loading {
+  animation: mascot-loading 0.58s ease-in-out infinite;
+}
+
+#status.is-rendering .mascot-body {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent), 0 1px 4px rgba(0,0,0,0.12);
+}
+
 @keyframes mascot-jump {
   0%, 100% { transform: translateY(0); }
   45%      { transform: translateY(-11px); }
+}
+
+@keyframes mascot-loading {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
 }
 
 @keyframes mascot-wiggle {
