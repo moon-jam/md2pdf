@@ -29,6 +29,13 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* Global thin scrollbar */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
 [hidden] { display: none !important; }
 
 html, body {
@@ -99,12 +106,6 @@ body.sidebar-collapsed #sidebar-resizer {
   flex: 1;
 }
 
-#sidebar-top::-webkit-scrollbar { width: 4px; }
-#sidebar-top::-webkit-scrollbar-track { background: transparent; }
-#sidebar-top::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
 
 h1 {
   margin: 0;
@@ -326,12 +327,28 @@ select:focus-visible { outline: 2px solid var(--accent); }
   color: var(--muted);
 }
 
-#editor-filename {
+#doc-title {
   font-size: 0.9em;
-  font-weight: 500;
-  color: var(--muted);
-  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  outline: none;
+  padding: 2px 4px;
+  min-width: 80px;
+  width: 100%;
+  max-width: 480px;
+  font-family: inherit;
+  cursor: text;
+  transition: border-color 0.15s;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
+#doc-title:focus { text-overflow: clip; }
+#doc-title:hover { border-bottom-color: var(--border); }
+#doc-title:focus { border-bottom-color: var(--accent); }
 
 .load-example-btn {
   font-size: 0.78rem;
@@ -637,13 +654,6 @@ select:focus-visible { outline: 2px solid var(--accent); }
   padding-right: 2px;
 }
 
-/* Thin scrollbar */
-#file-tree::-webkit-scrollbar { width: 4px; }
-#file-tree::-webkit-scrollbar-track { background: transparent; }
-#file-tree::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
 
 /* --- Tree items (files) --- */
 .tree-item {

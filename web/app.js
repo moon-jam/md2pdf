@@ -32,7 +32,7 @@ const loadExampleBtn = document.getElementById('load-example-btn');
 
 const sidebarResizer = document.getElementById('sidebar-resizer');
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
-const editorFilename = document.getElementById('editor-filename');
+const docTitle = document.getElementById('doc-title');
 
 const explorerResizer = document.getElementById('explorer-resizer');
 const fileExplorer    = document.getElementById('file-explorer');
@@ -57,6 +57,27 @@ const markedObj = new Marked(
     }
   })
 );
+
+// ============================================================
+//  Document Title  (auto from H1, or manually named)
+// ============================================================
+let titleEditedByUser = false;
+
+function extractH1(md) {
+  const m = md.match(/^#\s+(.+)$/m);
+  return m ? m[1].replace(/[*_~`]/g, '').trim() : '';
+}
+
+function updateTitleFromH1(md) {
+  if (titleEditedByUser) return;
+  const h1 = extractH1(md);
+  if (h1) docTitle.value = h1;
+}
+
+docTitle.addEventListener('input', () => {
+  titleEditedByUser = true;
+  saveLocalTextState();
+});
 
 // ============================================================
 //  CodeMirror
@@ -213,8 +234,8 @@ if (loadExampleBtn) {
     }
     const example = await fetchExample();
     if (example) {
+      titleEditedByUser = false;
       cm.setValue(example);
-      editorFilename.textContent = 'example.md';
       scheduleRender();
       saveLocalTextState();
     }
@@ -303,9 +324,9 @@ window.addEventListener('message', (e) => {
 fileInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  titleEditedByUser = false;
   cm.setValue(await file.text());
   uploadLabel.textContent = file.name;
-  editorFilename.textContent = file.name;
   scheduleRender();
 });
 
@@ -316,9 +337,9 @@ uploadArea.addEventListener('drop', async (e) => {
   uploadArea.classList.remove('drag-over');
   const file = e.dataTransfer.files[0];
   if (!file) return;
+  titleEditedByUser = false;
   cm.setValue(await file.text());
   uploadLabel.textContent = file.name;
-  editorFilename.textContent = file.name;
   scheduleRender();
 });
 
@@ -385,6 +406,8 @@ function saveLocalTextState() {
   localStorage.setItem('md2pdf_pageNum', pageNumToggle.checked ? 'true' : 'false');
   localStorage.setItem('md2pdf_css', customCssArea.value);
   localStorage.setItem('md2pdf_zoom', currentZoom);
+  localStorage.setItem('md2pdf_title', docTitle.value);
+  localStorage.setItem('md2pdf_title_edited', titleEditedByUser ? 'true' : 'false');
 }
 
 // ============================================================
@@ -644,10 +667,7 @@ async function loadMdFromFolder(file) {
   const mdDir = mdRelPath.includes('/') ? mdRelPath.substring(0, mdRelPath.lastIndexOf('/') + 1) : '';
   folderMdDir = mdDir;
   
-  // Set breadcrumbs / context based on file path
-  let path = mdRelPath;
-  if (path.startsWith(folderRoot + '/')) path = path.substring(folderRoot.length + 1);
-  editorFilename.textContent = `${folderRoot ? folderRoot + ' / ' : ''}${path}`;
+  titleEditedByUser = false;
   
   const imageFiles = folderFiles.filter(f => IMAGE_EXTS.test(f.name));
   const pathToPlaceholder = {};
@@ -725,7 +745,7 @@ folderInput.addEventListener('change', async (e) => {
 // ============================================================
 //  Live edit & Scroll Sync
 // ============================================================
-cm.on('change', () => { scheduleRender(); saveLocalTextState(); });
+cm.on('change', () => { scheduleRender(); updateTitleFromH1(cm.getValue()); saveLocalTextState(); });
 
 let lastScrollPercent = 0;
 
@@ -792,15 +812,24 @@ printBtn.addEventListener('click', () => {
   const doc = previewFrame.contentDocument;
   if (!win || !doc) return;
 
-  // 1. Temporarily strip zoom so PDF is printed at 100% scale
+  const filename = docTitle.value.trim() || 'document';
+
+  // 1. Set both parent and iframe title so the browser's Save-as-PDF dialog
+  //    picks up the right filename regardless of which it reads.
+  const prevParentTitle = document.title;
+  document.title = filename;
+  if (doc.title !== undefined) doc.title = filename;
+
+  // 2. Temporarily strip zoom so PDF is printed at 100% scale
   const pagesContainer = doc.querySelector('.pagedjs_pages');
   if (pagesContainer) pagesContainer.style.zoom = 1;
   else doc.body.style.zoom = 1;
 
-  // 2. Browser print dialog (blocks thread in most browsers)
+  // 3. Browser print dialog (blocks thread in most browsers)
   win.print();
 
-  // 3. Restore user's zoom preference immediately after dialog closes
+  // 4. Restore everything
+  document.title = prevParentTitle;
   if (pagesContainer) pagesContainer.style.zoom = currentZoom;
   else doc.body.style.zoom = currentZoom;
 });
@@ -976,6 +1005,7 @@ async function render() {
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
+<title>${docTitle.value.trim() || 'document'}</title>
 <style>
 ${pageAtRule}
 ${baseCss}
@@ -1133,7 +1163,13 @@ async function loadState() {
       if (infoDontShowChx) infoDontShowChx.checked = true;
     }
 
-    // 4. Editor text
+    // 4. Title
+    const storedTitle = localStorage.getItem('md2pdf_title');
+    const storedTitleEdited = localStorage.getItem('md2pdf_title_edited') === 'true';
+    titleEditedByUser = storedTitleEdited;
+    if (storedTitle) docTitle.value = storedTitle;
+
+    // 5. Editor text
     const storedText = localStorage.getItem('md2pdf_editor');
     if (storedText) {
       cm.setValue(storedText);
@@ -1141,8 +1177,8 @@ async function loadState() {
       // First visit — show the feature demo
       const example = await fetchExample();
       if (example) {
+        titleEditedByUser = false;
         cm.setValue(example);
-        editorFilename.textContent = 'example.md';
         scheduleRender();
       }
     }
