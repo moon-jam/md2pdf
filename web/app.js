@@ -17,6 +17,7 @@ const pageNumToggle  = document.getElementById('page-numbers-toggle');
 const customCssArea  = document.getElementById('custom-css');
 const applyCssBtn    = document.getElementById('apply-css');
 const printBtn       = document.getElementById('print-btn');
+const printZone      = document.getElementById('print-zone');
 const statusEl       = document.getElementById('status');
 const resizerEl      = document.getElementById('resizer');
 const previewPane    = document.getElementById('preview-pane');
@@ -47,13 +48,202 @@ const explorerToggle  = document.getElementById('explorer-toggle');
 let lastPageCount = 0;
 let isRendering   = false;
 
+// ── Mascot ──────────────────────────────────────────────────────
+let mascotMoverEl = null;
+let mascotGuyEl   = null;
+let mascotBodyEl  = null;
+let mascotX       = 40; // % — persists across re-renders
+let mascotMoveTimer = null;
+let mascotIdleTimer = null;
+let mascotLastScurryAt = 0;
+let mascotPointerRaf = 0;
+let mascotPointerClientX = 0;
+
+function clampMascotX(x) {
+  return Math.max(4, Math.min(86, x));
+}
+
+function mascotAlive() {
+  return mascotMoverEl && statusEl.contains(mascotMoverEl);
+}
+
+function clearMascotTimers() {
+  clearTimeout(mascotMoveTimer);
+  clearTimeout(mascotIdleTimer);
+}
+
+function showRenderingDots() {
+  clearMascotTimers();
+  mascotMoverEl = mascotGuyEl = mascotBodyEl = null;
+  statusEl.innerHTML = '<div class="status-dots"><div class="status-dot"></div><div class="status-dot"></div><div class="status-dot"></div></div>';
+}
+
+function buildMascot(n) {
+  clearMascotTimers();
+  statusEl.innerHTML = '';
+
+  const stage = document.createElement('div');
+  stage.className = 'mascot-stage';
+
+  const mover = document.createElement('div');
+  mover.className = 'mascot-mover';
+  mover.style.left = `${mascotX}%`;
+  mover.addEventListener('click', () => mascotDo('spin'));
+
+  const guy = document.createElement('div');
+  guy.className = 'mascot-guy';
+
+  const body = document.createElement('div');
+  body.className = 'mascot-body';
+  body.textContent = n;
+
+  const legs = document.createElement('div');
+  legs.className = 'mascot-legs';
+  legs.innerHTML = '<div class="mascot-leg"></div><div class="mascot-leg"></div>';
+
+  guy.append(body, legs);
+  mover.appendChild(guy);
+  stage.appendChild(mover);
+  statusEl.appendChild(stage);
+
+  mascotMoverEl = mover;
+  mascotGuyEl   = guy;
+  mascotBodyEl  = body;
+
+  scheduleMascotMove();
+  scheduleMascotIdle();
+}
+
+function updateMascotCount(n) {
+  if (mascotAlive()) {
+    if (mascotBodyEl && mascotBodyEl.textContent !== String(n)) {
+      mascotBodyEl.textContent = n;
+      mascotDo('celebrate');
+    }
+  } else {
+    buildMascot(n);
+  }
+}
+
+function mascotMoveTo(newX, { duration = 850, walk = true, fast = false } = {}) {
+  if (!mascotAlive()) return;
+  const clamped = clampMascotX(newX);
+  const goRight = clamped > mascotX;
+  mascotMoverEl.classList.toggle('flipped', goRight);
+  mascotMoverEl.style.transitionDuration = `${duration}ms`;
+  mascotX = clamped;
+  mascotMoverEl.style.left = `${clamped}%`;
+
+  if (walk) {
+    mascotGuyEl.classList.add(fast ? 'running' : 'walking');
+    setTimeout(() => {
+      if (!mascotGuyEl) return;
+      mascotGuyEl.classList.remove('walking', 'running');
+    }, Math.max(160, duration - 60));
+  }
+}
+
+function scheduleMascotMove() {
+  clearTimeout(mascotMoveTimer);
+  mascotMoveTimer = setTimeout(() => {
+    if (!mascotAlive()) return;
+    const newX = 8 + Math.random() * 74;
+    mascotMoveTo(newX);
+    scheduleMascotMove();
+  }, 1800 + Math.random() * 3000);
+}
+
+function scheduleMascotIdle() {
+  clearTimeout(mascotIdleTimer);
+  mascotIdleTimer = setTimeout(() => {
+    if (!mascotAlive()) return;
+    const actions = ['jump', 'jump', 'wiggle', 'spin', 'twirl', 'peek'];
+    mascotDo(actions[Math.floor(Math.random() * actions.length)]);
+    scheduleMascotIdle();
+  }, 2500 + Math.random() * 4500);
+}
+
+function mascotDo(action) {
+  if (!mascotAlive()) return;
+  mascotGuyEl.classList.remove('jump', 'wiggle', 'spin', 'twirl', 'peek', 'celebrate', 'flying');
+  // Force reflow so re-adding same class restarts animation
+  void mascotGuyEl.offsetWidth;
+  mascotGuyEl.classList.add(action);
+  const duration = action === 'celebrate' ? 900 : action === 'peek' ? 650 : action === 'flying' ? 620 : 550;
+  setTimeout(() => mascotGuyEl && mascotGuyEl.classList.remove(action), duration);
+}
+
+function mascotRunAwayFromButton() {
+  if (!mascotAlive()) return;
+  const now = Date.now();
+  if (now - mascotLastScurryAt < 900) return;
+  mascotLastScurryAt = now;
+
+  const targetX = mascotX < 50 ? (68 + Math.random() * 14) : (8 + Math.random() * 14);
+  mascotDo('jump');
+  mascotMoveTo(targetX, { duration: 360, walk: true, fast: true });
+  setTimeout(() => mascotDo('peek'), 420);
+}
+
+function mascotReactToPointer(clientX) {
+  if (!mascotAlive() || isRendering || !printZone) return;
+
+  const rect = printZone.getBoundingClientRect();
+  if (!rect.width) return;
+
+  const pointerX = clampMascotX(((clientX - rect.left) / rect.width) * 100);
+  const delta = pointerX - mascotX;
+  const distance = Math.abs(delta);
+  const now = Date.now();
+
+  // Close to mascot -> it dashes away like a mini chase game.
+  if (distance < 13) {
+    if (now - mascotLastScurryAt < 180) return;
+    mascotLastScurryAt = now;
+    const awayDir = delta >= 0 ? -1 : 1;
+    const jumpStep = 14 + Math.random() * 10;
+    mascotDo('jump');
+    mascotMoveTo(mascotX + awayDir * jumpStep, { duration: 250, walk: true, fast: true });
+    return;
+  }
+
+  // Cursor is far -> mascot sometimes hops toward it playfully.
+  if (distance > 24 && now - mascotLastScurryAt > 520 && Math.random() < 0.35) {
+    mascotLastScurryAt = now;
+    const towardDir = delta > 0 ? 1 : -1;
+    const hop = 8 + Math.random() * 8;
+    mascotMoveTo(mascotX + towardDir * hop, { duration: 330, walk: true, fast: false });
+    if (Math.random() < 0.35) mascotDo('wiggle');
+  }
+}
+
+function mascotFlyAwayAndReturn() {
+  if (!mascotAlive()) return;
+
+  const edgeX = Math.random() > 0.5 ? 84 : 6;
+  mascotDo('flying');
+  mascotMoveTo(edgeX, { duration: 300, walk: true, fast: true });
+
+  setTimeout(() => {
+    if (!mascotAlive()) return;
+    mascotMoveTo(12 + Math.random() * 68, { duration: 430, walk: true, fast: true });
+    mascotDo('jump');
+    setTimeout(() => mascotDo('celebrate'), 170);
+  }, 340);
+}
+
 function updateStatusInfo() {
   if (isRendering) return;
-  if (!cm.getValue().trim()) { setStatus(''); return; }
+  if (!cm.getValue().trim()) {
+    clearMascotTimers();
+    mascotMoverEl = mascotGuyEl = mascotBodyEl = null;
+    statusEl.innerHTML = '';
+    return;
+  }
   if (lastPageCount) {
-    setStatus(`${lastPageCount} page${lastPageCount !== 1 ? 's' : ''}`);
+    updateMascotCount(lastPageCount);
   } else {
-    setStatus('');
+    statusEl.innerHTML = '';
   }
 }
 
@@ -829,6 +1019,8 @@ applyCssBtn.addEventListener('click', () => { render(); saveLocalTextState(); })
 pageNumToggle.addEventListener('change', () => { if (cm.getValue().trim()) render(); saveLocalTextState(); });
 pageSizeSelect.addEventListener('change', () => { if (cm.getValue().trim()) render(); saveLocalTextState(); });
 printBtn.addEventListener('click', () => {
+  mascotFlyAwayAndReturn();
+
   const win = previewFrame.contentWindow;
   const doc = previewFrame.contentDocument;
   if (!win || !doc) return;
@@ -854,6 +1046,28 @@ printBtn.addEventListener('click', () => {
   if (pagesContainer) pagesContainer.style.zoom = currentZoom;
   else doc.body.style.zoom = currentZoom;
 });
+
+printBtn.addEventListener('mouseenter', () => {
+  if (isRendering) return;
+  mascotRunAwayFromButton();
+});
+
+if (printZone) {
+  printZone.addEventListener('pointermove', (e) => {
+    mascotPointerClientX = e.clientX;
+    if (mascotPointerRaf) return;
+    mascotPointerRaf = requestAnimationFrame(() => {
+      mascotPointerRaf = 0;
+      mascotReactToPointer(mascotPointerClientX);
+    });
+  });
+
+  printZone.addEventListener('pointerdown', (e) => {
+    if (e.target === printBtn || isRendering || !mascotAlive()) return;
+    mascotDo('spin');
+    mascotReactToPointer(e.clientX);
+  });
+}
 
 // ============================================================
 //  Render pipeline
@@ -1002,7 +1216,7 @@ async function render() {
     previewPane.classList.add('is-empty');
     isRendering = false;
     lastPageCount = 0;
-    setStatus('');
+    statusEl.innerHTML = '';
     return;
   }
 
@@ -1010,7 +1224,7 @@ async function render() {
   previewLoading.hidden = false;
   printBtn.disabled = true;
   isRendering = true;
-  setStatus('Rendering…');
+  showRenderingDots();
 
   const preprocessed  = preprocessMarkdown(mdSrc);
   const withImages    = resolveImages(preprocessed);
@@ -1132,6 +1346,7 @@ ${bodyHtml}
       isRendering = false;
       lastPageCount = e.data.pages || 0;
       updateStatusInfo();
+      mascotDo('celebrate');
       window.removeEventListener('message', onPagedDone);
       setTimeout(() => {
         previewFrame.contentWindow?.postMessage({ type: 'editor-scroll', percent: lastScrollPercent }, '*');
@@ -1151,9 +1366,6 @@ ${bodyHtml}
   };
 }
 
-function setStatus(msg) {
-  statusEl.textContent = msg;
-}
 
 // ============================================================
 //  Init: Load state on startup

@@ -99,6 +99,7 @@ body.sidebar-collapsed #sidebar-resizer {
 
 #sidebar-top {
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 18px 14px 10px;
   display: flex;
   flex-direction: column;
@@ -283,7 +284,9 @@ select:focus-visible { outline: 2px solid var(--accent); }
   border: none;
   color: #fff;
   transition: opacity 0.15s, transform 0.1s;
-  margin-top: auto;
+  margin-top: 0;
+  position: relative;
+  z-index: 2;
 }
 
 #print-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
@@ -297,11 +300,188 @@ select:focus-visible { outline: 2px solid var(--accent); }
   font-weight: 700;
 }
 
+#print-zone {
+  margin-top: auto;
+  position: relative;
+  padding-top: 0;
+  width: 100%;
+}
+
+#print-zone #print-btn {
+  width: 100%;
+  display: block;
+}
+
 #status {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  min-height: 1em;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 4px);
+  height: 42px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Rendering dots */
+.status-dots {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: dot-bounce 1s ease-in-out infinite;
+  opacity: 0.5;
+}
+
+.status-dot:nth-child(2) { animation-delay: 0.15s; }
+.status-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* Mascot */
+.mascot-stage {
+  position: relative;
+  width: 100%;
+  height: 42px;
+  pointer-events: none;
+}
+
+.mascot-mover {
+  position: absolute;
+  bottom: 2px;
+  transition: left 0.85s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  pointer-events: auto;
+  cursor: pointer;
+  will-change: left, transform;
+}
+
+.mascot-mover.flipped { transform: scaleX(-1); }
+
+.mascot-guy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-origin: center bottom;
+  will-change: transform;
+}
+
+.mascot-body {
+  width: 17px;
+  height: 21px;
+  background: var(--editor-bg);
+  border: 1.5px solid var(--border);
+  border-top-right-radius: 4px;
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 7.5px;
+  font-weight: 800;
+  color: var(--accent);
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  user-select: none;
+  line-height: 1;
+  transform: translateY(1px);
+}
+
+/* folded corner */
+.mascot-body::before {
+  content: '';
+  position: absolute;
+  top: -1px; right: -1px;
+  width: 6px; height: 6px;
+  background: var(--bg);
+  border-bottom: 1.5px solid var(--border);
+  border-left: 1.5px solid var(--border);
+  border-bottom-left-radius: 1px;
+}
+
+.mascot-legs {
+  display: flex;
+  gap: 4px;
+  margin-top: 1px;
+}
+
+.mascot-leg {
+  width: 3px;
+  height: 6px;
+  background: var(--muted);
+  border-radius: 0 0 2px 2px;
+  transform-origin: top center;
+}
+
+.mascot-guy.walking .mascot-leg:nth-child(1) { animation: leg-a 0.2s ease-in-out infinite alternate; }
+.mascot-guy.walking .mascot-leg:nth-child(2) { animation: leg-b 0.2s ease-in-out infinite alternate; }
+.mascot-guy.running .mascot-leg:nth-child(1) { animation: leg-a 0.11s ease-in-out infinite alternate; }
+.mascot-guy.running .mascot-leg:nth-child(2) { animation: leg-b 0.11s ease-in-out infinite alternate; }
+
+@keyframes leg-a { from { transform: rotate(-22deg); } to { transform: rotate(22deg); } }
+@keyframes leg-b { from { transform: rotate(22deg);  } to { transform: rotate(-22deg); } }
+
+.mascot-guy.jump      { animation: mascot-jump      0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.mascot-guy.wiggle    { animation: mascot-wiggle    0.45s ease; }
+.mascot-guy.spin      { animation: mascot-spin      0.5s  ease; }
+.mascot-guy.twirl     { animation: mascot-twirl     0.55s ease; }
+.mascot-guy.peek      { animation: mascot-peek      0.65s ease; }
+.mascot-guy.celebrate { animation: mascot-celebrate 0.9s  ease; }
+.mascot-guy.flying    { animation: mascot-fly       0.62s cubic-bezier(0.35, 1, 0.65, 1); }
+
+@keyframes mascot-jump {
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(-11px); }
+}
+
+@keyframes mascot-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  20%      { transform: rotate(-18deg); }
+  60%      { transform: rotate(18deg); }
+  80%      { transform: rotate(-9deg); }
+}
+
+@keyframes mascot-spin {
+  0%   { transform: rotate(0deg)   scale(1); }
+  50%  { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes mascot-twirl {
+  0%   { transform: rotate(0deg); }
+  50%  { transform: rotate(-220deg) scale(1.08); }
+  100% { transform: rotate(-360deg); }
+}
+
+@keyframes mascot-peek {
+  0%, 100% { transform: translateX(0); }
+  30%      { transform: translateX(4px) rotate(8deg); }
+  70%      { transform: translateX(2px) rotate(-6deg); }
+}
+
+@keyframes mascot-celebrate {
+  0%, 100% { transform: translateY(0)   scale(1); }
+  20%      { transform: translateY(-11px) scale(1.1); }
+  40%      { transform: translateY(0)   scale(1); }
+  65%      { transform: translateY(-7px)  scale(1.05); }
+  80%      { transform: translateY(0)   scale(1); }
+}
+
+@keyframes mascot-fly {
+  0%   { transform: translateY(0) rotate(0deg) scale(1); }
+  50%  { transform: translateY(-16px) rotate(18deg) scale(1.12); }
+  100% { transform: translateY(0) rotate(0deg) scale(1); }
 }
 
 /* ---------- Editor pane ---------- */
