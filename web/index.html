@@ -150,22 +150,17 @@
     <div class="modal-content">
       <button class="modal-close" id="info-close-btn" title="Close">✕</button>
       <div class="modal-body">
-        <h2>Welcome to md2pdf</h2>
-        <p>A fast, local-first Markdown to PDF converter optimized for high-quality printing and pixel-perfect layouts.</p>
-        
+        <h2>md2pdf</h2>
+        <p class="modal-tagline">The preview on the right is the actual PDF layout — real pagination, real margins — not just a styled HTML page. Edit on the left, see your PDF on the right.</p>
+
         <div class="modal-section scrollable-section">
-          <h3>Core Features & How to Use</h3>
           <ul class="feature-list">
-            <li><strong>Live Pagination Preview:</strong> Write Markdown on the left, instantly see accurate paginated PDF results on the right.</li>
-            <li><strong>Local Folder Mounting:</strong> Click <strong>"Open Folder"</strong> to browse a local directory on your PC. Relative image paths (like <code>![img](images/pic.png)</code>) will be resolved natively—no servers involved!</li>
-            <li><strong>Rich Image Workflow:</strong>
-              <ul>
-                <li><strong>Drag & Drop / Paste:</strong> Paste images directly into the editor to upload them instantly (saved locally).</li>
-                <li><strong>Explorer Integration:</strong> Right-click images in the File Explorer sidebar to preview them in a lightbox, or seamlessly insert them into your text.</li>
-              </ul>
-            </li>
-            <li><strong>Granular Settings:</strong> Toggle page numbers, select page sizes (A4, Letter, etc.), or write Custom CSS for ultimate layout control.</li>
-            <li><strong>Export:</strong> Click <strong>"Save as PDF"</strong> when you are ready. <em>Pro tip: type <code>&lt;!-- pagebreak --&gt;</code> in your text to force a page break!</em></li>
+            <li><strong>Open Folder</strong> to mount a local directory. Relative image paths like <code>![](img/photo.png)</code> resolve automatically, nothing leaves your machine.</li>
+            <li><strong>Paste or drag images</strong> directly into the editor. Right-click images in the File Explorer to insert at the cursor.</li>
+            <li>Add <code>&lt;!-- pagebreak --&gt;</code> anywhere to force a page break — watch it appear in the preview immediately.</li>
+            <li>Open the <strong>Custom CSS</strong> panel to adjust fonts, colours, spacing. Live preview updates as you type.</li>
+            <li>The <strong>title field</strong> at the top becomes the PDF filename when you save.</li>
+            <li>Everything saves automatically in this browser. Nothing is uploaded to any server.</li>
           </ul>
         </div>
 
@@ -173,7 +168,7 @@
           <label class="remember-label">
             <input type="checkbox" id="info-dont-show"> Don't show this automatically next time
           </label>
-          <p>Open Source under the <strong>MIT License</strong>.</p>
+          <p>Open source · MIT License</p>
           <a href="https://github.com/moon-jam/md2pdf" target="_blank" class="github-link">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
             github.com/moon-jam/md2pdf

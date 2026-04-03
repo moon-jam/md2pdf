@@ -1,93 +1,70 @@
 <div align="center">
   <h1><code>md2pdf</code></h1>
-  <p><strong>Convert Markdown to professional PDF instantly.</strong></p>
-  <p>Built with <a href="https://vivliostyle.org/">Vivliostyle</a> / Paged.js. Features Prism.js syntax highlighting and built-in Traditional Chinese typography.</p>
-  <p>
-    🌐 <strong>Try the Online Web Editor:</strong> <a href="https://moon-jam.me/md2pdf">moon-jam.me/md2pdf</a>
-  </p>
+  <p>Markdown to PDF with a live paginated preview.</p>
+  <p>🌐 <a href="https://moon-jam.me/md2pdf">moon-jam.me/md2pdf</a> — runs entirely in the browser</p>
 </div>
 
 ---
 
-## ✨ Features
+The thing that's different here: the preview actually shows you the PDF layout — paginated, with real margins — not just a styled HTML page. Code blocks won't get cut in half at a page boundary. What you see is what you export.
 
-- **Perfect Typography**: Pre-configured with Noto Sans TC, Noto Serif TC, and JetBrains Mono for a clean, modern aesthetic.
-- **Vibrant Syntax Highlighting**: Built-in Prism.js syntax coloring powered by the gorgeous **Catppuccin Mocha** palette. Handled seamlessly at build-time for pixel-perfect PDF rendering.
-- **Premium Developer UI**: Thoughtfully designed elements—from elegant callouts and blockquotes to balanced spacing—making your technical documents feel like professional publications rather than raw markdown.
-- **Print Ready**: Auto-prevents awkward page breaks inside code blocks, tables, and paragraphs.
-- **Offline & Cross-Platform**: Works fully offline after the first run (downloads headless Chromium automatically).
+Built on Paged.js for the layout engine, Prism.js (Catppuccin Mocha) for syntax highlighting, and Noto fonts for Chinese typography.
 
-## 📄 Example Output
+## Web editor
 
-Curious what the result looks like? Check out [README.pdf](README.pdf) — this README itself, converted with `md2pdf`!
+[moon-jam.me/md2pdf](https://moon-jam.me/md2pdf) — no install needed.
 
-## 🛠 Installation
+- Live paginated preview updates as you type
+- Open a local folder to resolve relative image paths without any upload
+- Paste or drag images straight into the editor
+- Custom CSS panel with live preview
+- `<!-- pagebreak -->` to force page breaks
+- Title field at the top sets the PDF filename
+- Auto-saves in the browser via IndexedDB, nothing sent to a server
 
-Requires Node.js 18 or newer.
+## CLI
+
+For local use or scripting.
+
+**Requirements:** Node.js 18+
 
 ```bash
-# Clone the repository
 git clone https://github.com/moon-jam/md2pdf.git
 cd md2pdf
-
-# Install dependencies and link it globally
-npm install
-npm link
+npm install && npm link
 ```
-
-<!-- pagebreak -->
-
-## 💻 Usage
-
-Run the tool from any directory against any Markdown file!
 
 ```bash
-# Basic usage (outputs 'report.pdf' in the same directory)
+# basic usage
 md2pdf report.md
 
-# Live Preview & Watch Mode (auto-reloads on save)
+# watch mode (live preview in browser, auto-reloads on save)
 md2pdf report.md --watch
 
-# Custom output path
-md2pdf report.md -o ~/Documents/final_report.pdf
+# custom output path
+md2pdf report.md -o ~/Documents/final.pdf
 
-# Change Paper Size (Default: A4)
+# change paper size
 md2pdf report.md --size Letter
 
-# Bring your own CSS stylesheet
+# custom stylesheet
 md2pdf report.md --style my_theme.css
-
-# View all options
-md2pdf --help
 ```
-
-### Options
 
 | Flag | Alias | Description | Default |
 |---|---|---|---|
-| `--output` | `-o` | Output PDF file path | Same as input file with `.pdf` |
-| `--watch`  | `-w` | Open browser and live-reload on file changes | `false` |
-| `--style` | | Custom CSS stylesheet file path | Bundled `style.css` |
-| `--size` | | PDF paper size (A4, Letter, B5, etc) | `A4` |
-| `--title` | | Title of the generated PDF document | Base filename |
-| `--language`| | Language metadata code | `zh-TW` |
-| `--page-numbers` | `-p` | Show page numbers in the footer | `false` |
+| `--output` | `-o` | Output path | Same dir, `.pdf` extension |
+| `--watch` | `-w` | Live preview in browser | `false` |
+| `--style` | | CSS file | Bundled `style.css` |
+| `--size` | | Paper size | `A4` |
+| `--title` | | PDF title | Filename |
+| `--language` | | Language metadata | `zh-TW` |
+| `--page-numbers` | `-p` | Page numbers in footer | `false` |
 
-## 💡 Tips & Tricks
+## Modifying the stylesheet
 
-**Forcing a Page Break**  
-If you need to manually split content to a new page, simply type:
-```markdown
-<!-- pagebreak -->
-```
-md2pdf will automatically convert it into a seamless page split during rendering.
-
-## 🎨 Modifying the Theme
-
-Want to change how things look? Just open `style.css` in the project root and tweak to your heart's content. Changes apply instantly on your next `md2pdf` run!
+The bundled `style.css` controls everything: fonts, spacing, syntax highlight colours, page layout. Edit it directly and re-run.
 
 ---
 
-<p align="center">
-  <em>Created by <a href="https://github.com/moon-jam">moon-jam</a>. Built with the help of <strong>Antigravity</strong> 🚀</em>
-</p>
+MIT · [moon-jam](https://github.com/moon-jam)
