@@ -807,11 +807,8 @@ function renderTreeNode(node, container) {
 
       // Click → full preview
       item.addEventListener('click', async () => {
-        let dataUrl = imageStore[placeholder];
-        if (!dataUrl) {
-          dataUrl = await readFileAsDataURL(file);
-          storeImage(dataUrl, 'img:' + relToMd);
-        }
+        const dataUrl = await readFileAsDataURL(file);
+        storeImage(dataUrl, 'img:' + relToMd);
         showImagePreview(dataUrl, name);
       });
 
@@ -820,20 +817,15 @@ function renderTreeNode(node, container) {
         e.preventDefault();
         showContextMenu(e.clientX, e.clientY, [
           { icon: '📋', label: 'Insert at cursor', action: async () => {
-            if (!imageStore[placeholder]) {
-              const dataUrl = await readFileAsDataURL(file);
-              storeImage(dataUrl, 'img:' + relToMd);
-            }
+            const dataUrl = await readFileAsDataURL(file);
+            storeImage(dataUrl, 'img:' + relToMd);
             const alt = name.replace(/\.[^.]+$/, '');
             cm.getDoc().replaceRange(`\n![${alt}](${placeholder})\n`, cm.getDoc().getCursor());
             scheduleRender();
           }},
           { icon: '👁️', label: 'Preview', action: async () => {
-            let dataUrl = imageStore[placeholder];
-            if (!dataUrl) {
-              dataUrl = await readFileAsDataURL(file);
-              storeImage(dataUrl, 'img:' + relToMd);
-            }
+            const dataUrl = await readFileAsDataURL(file);
+            storeImage(dataUrl, 'img:' + relToMd);
             showImagePreview(dataUrl, name);
           }},
         ]);
@@ -956,10 +948,8 @@ async function loadMdFromFolder(file) {
       : imgRelPath);
     const placeholder = '{{' + label + '}}';
 
-    if (!imageStore[placeholder]) {
-      const dataUrl = await readFileAsDataURL(imgFile);
-      storeImage(dataUrl, label);
-    }
+    const dataUrl = await readFileAsDataURL(imgFile);
+    storeImage(dataUrl, label);
 
     pathToPlaceholder[relToMd] = placeholder;
     pathToPlaceholder['./' + relToMd] = placeholder;
