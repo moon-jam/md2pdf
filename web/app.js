@@ -691,9 +691,23 @@ let imageStore = {};  // { '{{img:1}}': 'data:image/png;base64,...', ... }
 let imageCounter = 0;
 
 function storeImage(dataUrl, label) {
-  imageCounter++;
-  const tag = label || `img:${imageCounter}`;
+  let baseTag = label;
+  if (!baseTag) {
+    do {
+      imageCounter++;
+      baseTag = `img:${imageCounter}`;
+    } while (Object.prototype.hasOwnProperty.call(imageStore, `{{${baseTag}}}`));
+  }
+
+  let tag = baseTag;
+  let suffix = 2;
+  while (Object.prototype.hasOwnProperty.call(imageStore, `{{${tag}}}`)) {
+    tag = `${baseTag}-${suffix}`;
+    suffix++;
+  }
+
   const placeholder = `{{${tag}}}`;
+
   imageStore[placeholder] = dataUrl;
   
   idbSet('imageStore', imageStore);
@@ -803,7 +817,6 @@ function renderTreeNode(node, container) {
       const relToMd = relPath.startsWith(folderRoot + '/')
         ? relPath.substring(folderRoot.length + 1)
         : relPath;
-      const placeholder = '{{img:' + relToMd + '}}';
 
       // Click → full preview
       item.addEventListener('click', async () => {
@@ -818,7 +831,7 @@ function renderTreeNode(node, container) {
         showContextMenu(e.clientX, e.clientY, [
           { icon: '📋', label: 'Insert at cursor', action: async () => {
             const dataUrl = await readFileAsDataURL(file);
-            storeImage(dataUrl, 'img:' + relToMd);
+            const placeholder = storeImage(dataUrl, 'img:' + relToMd);
             const alt = name.replace(/\.[^.]+$/, '');
             cm.getDoc().replaceRange(`\n![${alt}](${placeholder})\n`, cm.getDoc().getCursor());
             scheduleRender();
@@ -946,10 +959,9 @@ async function loadMdFromFolder(file) {
     const label = 'img:' + (imgRelPath.startsWith(folderRoot + '/')
       ? imgRelPath.substring(folderRoot.length + 1)
       : imgRelPath);
-    const placeholder = '{{' + label + '}}';
 
     const dataUrl = await readFileAsDataURL(imgFile);
-    storeImage(dataUrl, label);
+    const placeholder = storeImage(dataUrl, label);
 
     pathToPlaceholder[relToMd] = placeholder;
     pathToPlaceholder['./' + relToMd] = placeholder;
