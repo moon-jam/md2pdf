@@ -153,6 +153,55 @@ h1 {
 #image-upload-area input[type="file"],
 #folder-upload-area input[type="file"] { display: none; }
 
+/* ---------- Drafts ---------- */
+#drafts-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  background: var(--bg);
+}
+
+#drafts-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+#draft-select,
+#draft-name {
+  width: 100%;
+}
+
+#draft-name {
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  background: var(--editor-bg);
+  color: var(--text);
+  outline: none;
+}
+
+#draft-name:focus-visible {
+  border-color: var(--accent);
+}
+
+#draft-actions {
+  display: flex;
+  gap: 6px;
+}
+
+#draft-actions .icon-btn {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  font-size: 0.78rem;
+}
+
 /* ---------- Options ---------- */
 .option-row {
   display: flex;

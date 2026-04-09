@@ -70,6 +70,17 @@
       <input type="file" id="image-input" accept="image/*" multiple>
     </label>
 
+    <div id="drafts-panel">
+      <div id="drafts-label">Drafts</div>
+      <select id="draft-select" aria-label="Draft list"></select>
+      <input id="draft-name" type="text" placeholder="Draft name" aria-label="Draft name">
+      <div id="draft-actions">
+        <button id="draft-save-btn" class="icon-btn" type="button">Save</button>
+        <button id="draft-new-btn" class="icon-btn" type="button">New</button>
+        <button id="draft-delete-btn" class="icon-btn" type="button">Delete</button>
+      </div>
+    </div>
+
     <div class="option-row">
       <label for="page-size">Page size</label>
       <select id="page-size">

@@ -31,6 +31,11 @@ const infoModal      = document.getElementById('info-modal-overlay');
 const infoCloseBtn   = document.getElementById('info-close-btn');
 const infoDontShowChx = document.getElementById('info-dont-show');
 const loadExampleBtn = document.getElementById('load-example-btn');
+const draftSelect    = document.getElementById('draft-select');
+const draftNameInput = document.getElementById('draft-name');
+const draftSaveBtn   = document.getElementById('draft-save-btn');
+const draftNewBtn    = document.getElementById('draft-new-btn');
+const draftDeleteBtn = document.getElementById('draft-delete-btn');
 
 const sidebarResizer = document.getElementById('sidebar-resizer');
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
@@ -513,6 +518,42 @@ if (loadExampleBtn) {
   });
 }
 
+if (draftSelect) {
+  draftSelect.addEventListener('change', (e) => {
+    switchToDraft(e.target.value);
+  });
+}
+
+if (draftSaveBtn) {
+  draftSaveBtn.addEventListener('click', () => {
+    saveActiveDraftSnapshot({ syncUi: true });
+  });
+}
+
+if (draftNewBtn) {
+  draftNewBtn.addEventListener('click', () => {
+    createNewDraft();
+  });
+}
+
+if (draftDeleteBtn) {
+  draftDeleteBtn.addEventListener('click', () => {
+    deleteCurrentDraft();
+  });
+}
+
+if (draftNameInput) {
+  draftNameInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    saveActiveDraftSnapshot({ syncUi: true });
+  });
+
+  draftNameInput.addEventListener('blur', () => {
+    saveActiveDraftSnapshot({ syncUi: true });
+  });
+}
+
 // ============================================================
 //  File Explorer Resizer (Vertical)
 // ============================================================
@@ -630,6 +671,11 @@ imageInput.addEventListener('change', async (e) => {
 // ============================================================
 const DB_NAME = 'md2pdf_db';
 const STORE_NAME = 'state';
+const DRAFTS_STORAGE_KEY = 'md2pdf_drafts_v1';
+const ACTIVE_DRAFT_STORAGE_KEY = 'md2pdf_active_draft_v1';
+
+let drafts = [];
+let activeDraftId = '';
 
 function initDB() {
   return new Promise((resolve, reject) => {
@@ -680,6 +726,188 @@ function saveLocalTextState() {
   localStorage.setItem('md2pdf_zoom', currentZoom);
   localStorage.setItem('md2pdf_title', docTitle.value);
   localStorage.setItem('md2pdf_title_edited', titleEditedByUser ? 'true' : 'false');
+  saveActiveDraftSnapshot();
+}
+
+function createDraftId() {
+  return `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function makeDefaultDraftName() {
+  const usedNames = new Set(drafts.map((d) => d.name));
+  let n = 1;
+  while (usedNames.has(`Draft ${n}`)) n++;
+  return `Draft ${n}`;
+}
+
+function getDraftById(id) {
+  return drafts.find((d) => d.id === id) || null;
+}
+
+function persistDrafts() {
+  localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+  if (activeDraftId) localStorage.setItem(ACTIVE_DRAFT_STORAGE_KEY, activeDraftId);
+}
+
+function refreshDraftControls() {
+  if (!draftSelect) return;
+
+  draftSelect.innerHTML = '';
+  for (const draft of drafts) {
+    const opt = document.createElement('option');
+    opt.value = draft.id;
+    opt.textContent = draft.name;
+    if (draft.id === activeDraftId) opt.selected = true;
+    draftSelect.appendChild(opt);
+  }
+
+  const activeDraft = getDraftById(activeDraftId);
+  if (draftNameInput) draftNameInput.value = activeDraft?.name || '';
+  if (draftDeleteBtn) draftDeleteBtn.disabled = drafts.length <= 1;
+}
+
+function loadDraftIntoEditor(draft) {
+  if (!draft) return;
+  titleEditedByUser = !!draft.titleEditedByUser;
+  docTitle.value = draft.title || 'Untitled Document';
+  if (draftNameInput) draftNameInput.value = draft.name || '';
+  cm.setValue(draft.text || '');
+}
+
+function saveActiveDraftSnapshot({ syncUi = false } = {}) {
+  const draft = getDraftById(activeDraftId);
+  if (!draft) return;
+
+  draft.text = cm.getValue();
+  draft.title = docTitle.value;
+  draft.titleEditedByUser = !!titleEditedByUser;
+  draft.updatedAt = Date.now();
+
+  const nameFromInput = draftNameInput?.value?.trim();
+  if (nameFromInput && nameFromInput !== draft.name) {
+    const conflict = drafts.some((d) => d.id !== draft.id && d.name === nameFromInput);
+    if (conflict) {
+      if (draftNameInput) draftNameInput.value = draft.name;
+      alert(`Draft name "${nameFromInput}" already exists.`);
+      return;
+    }
+    draft.name = nameFromInput;
+  }
+
+  persistDrafts();
+  if (syncUi) refreshDraftControls();
+}
+
+function switchToDraft(nextId) {
+  if (!nextId || nextId === activeDraftId) return;
+
+  saveActiveDraftSnapshot();
+  const nextDraft = getDraftById(nextId);
+  if (!nextDraft) return;
+
+  activeDraftId = nextDraft.id;
+  persistDrafts();
+  refreshDraftControls();
+  loadDraftIntoEditor(nextDraft);
+}
+
+function createNewDraft() {
+  saveActiveDraftSnapshot();
+
+  const newDraft = {
+    id: createDraftId(),
+    name: makeDefaultDraftName(),
+    text: '',
+    title: 'Untitled Document',
+    titleEditedByUser: false,
+    updatedAt: Date.now(),
+  };
+
+  drafts.unshift(newDraft);
+  activeDraftId = newDraft.id;
+  persistDrafts();
+  refreshDraftControls();
+  uploadLabel.textContent = 'Open .md file';
+  loadDraftIntoEditor(newDraft);
+}
+
+function deleteCurrentDraft() {
+  if (drafts.length <= 1) {
+    alert('At least one draft is required.');
+    return;
+  }
+
+  const activeDraft = getDraftById(activeDraftId);
+  if (!activeDraft) return;
+  if (!confirm(`Delete draft "${activeDraft.name}"?`)) return;
+
+  const idx = drafts.findIndex((d) => d.id === activeDraftId);
+  if (idx < 0) return;
+
+  drafts.splice(idx, 1);
+  const nextDraft = drafts[Math.max(0, idx - 1)] || drafts[0] || null;
+  if (!nextDraft) return;
+
+  activeDraftId = nextDraft.id;
+  persistDrafts();
+  refreshDraftControls();
+  uploadLabel.textContent = 'Open .md file';
+  loadDraftIntoEditor(nextDraft);
+}
+
+function hydrateDraftsFromStorage() {
+  let parsedDrafts = [];
+  try {
+    const raw = localStorage.getItem(DRAFTS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsedDrafts = parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse drafts from storage', e);
+  }
+
+  const seenIds = new Set();
+  drafts = parsedDrafts
+    .map((item, idx) => {
+      if (!item || typeof item !== 'object') return null;
+      const draft = {
+        id: typeof item.id === 'string' && item.id ? item.id : createDraftId(),
+        name: typeof item.name === 'string' && item.name.trim() ? item.name.trim() : `Draft ${idx + 1}`,
+        text: typeof item.text === 'string' ? item.text : '',
+        title: typeof item.title === 'string' && item.title ? item.title : 'Untitled Document',
+        titleEditedByUser: !!item.titleEditedByUser,
+        updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now(),
+      };
+      if (seenIds.has(draft.id)) draft.id = createDraftId();
+      seenIds.add(draft.id);
+      return draft;
+    })
+    .filter(Boolean);
+
+  if (!drafts.length) {
+    const legacyText = localStorage.getItem('md2pdf_editor') || '';
+    const legacyTitle = localStorage.getItem('md2pdf_title') || 'Untitled Document';
+    const legacyTitleEdited = localStorage.getItem('md2pdf_title_edited') === 'true';
+    drafts = [{
+      id: createDraftId(),
+      name: 'Draft 1',
+      text: legacyText,
+      title: legacyTitle,
+      titleEditedByUser: legacyTitleEdited,
+      updatedAt: Date.now(),
+    }];
+  }
+
+  const storedActiveId = localStorage.getItem(ACTIVE_DRAFT_STORAGE_KEY);
+  activeDraftId = drafts.some((d) => d.id === storedActiveId)
+    ? storedActiveId
+    : drafts[0].id;
+
+  persistDrafts();
+  refreshDraftControls();
 }
 
 // ============================================================
@@ -1589,23 +1817,22 @@ async function loadState() {
       if (infoDontShowChx) infoDontShowChx.checked = true;
     }
 
-    // 4. Title
-    const storedTitle = localStorage.getItem('md2pdf_title');
-    const storedTitleEdited = localStorage.getItem('md2pdf_title_edited') === 'true';
-    titleEditedByUser = storedTitleEdited;
-    if (storedTitle) docTitle.value = storedTitle;
+    // 4. Drafts
+    hydrateDraftsFromStorage();
+    const activeDraft = getDraftById(activeDraftId);
+    if (activeDraft) {
+      loadDraftIntoEditor(activeDraft);
+    }
 
-    // 5. Editor text
-    const storedText = localStorage.getItem('md2pdf_editor');
-    if (storedText) {
-      cm.setValue(storedText);
-    } else {
+    // 5. First visit with empty draft
+    if (!cm.getValue().trim()) {
       // First visit — show the feature demo
       const example = await fetchExample();
       if (example) {
         titleEditedByUser = false;
         cm.setValue(example);
         scheduleRender();
+        saveLocalTextState();
       } else {
         // Fetch failed — show empty-state hint
         previewPane.classList.add('is-empty');
