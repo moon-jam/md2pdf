@@ -47,6 +47,18 @@ class Point:
         return ((self.x - other.x)**2 + (self.y - other.y)**2) ** 0.5
 ```
 
+## Image sizing
+
+Adjust width or height inline by appending `{width=…}` / `{height=…}` after a
+standard image link. Numbers default to pixels; `%`, `em`, `rem`, `vw`, `vh`
+also work.
+
+```markdown
+![logo](logo.png){width=300}
+![hero](banner.jpg){width=50%}
+![icon](icon.svg){width=24px height=24px}
+```
+
 ## Page breaks
 
 Add `<!-- pagebreak -->` to force a new page. The next section starts on next page:

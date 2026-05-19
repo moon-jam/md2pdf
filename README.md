@@ -26,6 +26,7 @@ Pure frontend: your content stays in your browser, with no server upload.
 - Live paginated preview updates as you type
 - Open a local folder to resolve relative image paths without any upload
 - Paste or drag images straight into the editor
+- Resize images inline with `![alt](image.png){width=300}` or `{width=50% height=auto}`
 - Custom CSS panel with live preview
 - `<!-- pagebreak -->` to force page breaks
 - Title field at the top sets the PDF filename

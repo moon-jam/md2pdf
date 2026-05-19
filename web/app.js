@@ -338,9 +338,19 @@ function updateTitleFromH1(md) {
   if (h1) docTitle.value = h1;
 }
 
+let titleFromH1Timer = null;
+function scheduleTitleFromH1Update() {
+  if (titleEditedByUser) return;
+  clearTimeout(titleFromH1Timer);
+  titleFromH1Timer = setTimeout(() => {
+    titleFromH1Timer = null;
+    updateTitleFromH1(cm.getValue());
+  }, 200);
+}
+
 docTitle.addEventListener('input', () => {
   titleEditedByUser = true;
-  saveLocalTextState();
+  scheduleTextStateSave();
 });
 
 // ============================================================
@@ -729,6 +739,26 @@ function saveLocalTextState() {
   saveActiveDraftSnapshot();
 }
 
+// Trailing-debounced wrapper so high-frequency events (keystroke, title typing)
+// don't issue 7+ synchronous localStorage writes per character.
+let textStateSaveTimer = null;
+const TEXT_STATE_SAVE_DEBOUNCE_MS = 400;
+
+function scheduleTextStateSave() {
+  clearTimeout(textStateSaveTimer);
+  textStateSaveTimer = setTimeout(() => {
+    textStateSaveTimer = null;
+    saveLocalTextState();
+  }, TEXT_STATE_SAVE_DEBOUNCE_MS);
+}
+
+function flushTextStateSave() {
+  if (textStateSaveTimer === null) return;
+  clearTimeout(textStateSaveTimer);
+  textStateSaveTimer = null;
+  saveLocalTextState();
+}
+
 function createDraftId() {
   return `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -937,15 +967,35 @@ function storeImage(dataUrl, label) {
   const placeholder = `{{${tag}}}`;
 
   imageStore[placeholder] = dataUrl;
-  
+
+  scheduleImageStoreSave();
+
+  return placeholder;
+}
+
+let imageStoreSaveTimer = null;
+const IMAGE_STORE_SAVE_DEBOUNCE_MS = 300;
+
+function scheduleImageStoreSave() {
+  clearTimeout(imageStoreSaveTimer);
+  imageStoreSaveTimer = setTimeout(() => {
+    imageStoreSaveTimer = null;
+    idbSet('imageStore', imageStore);
+    idbSet('imageCounter', imageCounter);
+  }, IMAGE_STORE_SAVE_DEBOUNCE_MS);
+}
+
+function flushImageStoreSave() {
+  if (imageStoreSaveTimer === null) return;
+  clearTimeout(imageStoreSaveTimer);
+  imageStoreSaveTimer = null;
   idbSet('imageStore', imageStore);
   idbSet('imageCounter', imageCounter);
-  
-  return placeholder;
 }
 
 /** Replace all {{img:N}} placeholders in a string with real data URLs. */
 function resolveImages(text) {
+  if (!imageStore || Object.keys(imageStore).length === 0) return text;
   return text.replace(/\{\{[^}]+\}\}/g, (m) => imageStore[m] || m);
 }
 
@@ -1247,7 +1297,11 @@ folderInput.addEventListener('change', async (e) => {
 // ============================================================
 //  Live edit & Scroll Sync
 // ============================================================
-cm.on('change', () => { scheduleRender(); updateTitleFromH1(cm.getValue()); saveLocalTextState(); });
+cm.on('change', () => {
+  scheduleRender();
+  scheduleTitleFromH1Update();
+  scheduleTextStateSave();
+});
 
 let lastScrollPercent = 0;
 
@@ -1283,12 +1337,6 @@ function afterFramePaint(frame, callback) {
   // Double RAF gives the browser one full paint cycle to settle layout/scroll.
   raf(() => raf(callback));
 }
-
-// CodeMirror scroll doesn't trigger anything anymore during typing,
-// but we keep the category for future simple features.
-cm.on('scroll', () => {
-  // No-op for now as per user request to disable sync
-});
 
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'preview-scroll') {
@@ -1404,7 +1452,7 @@ let renderInFlight = false;
 let renderQueued = false;
 let lastRenderKey = '';
 
-const RENDER_DEBOUNCE_MS = 250;
+const RENDER_DEBOUNCE_MS = 500;
 const RENDER_AFTER_INFLIGHT_MS = 80;
 
 async function getBundledCSS() {
@@ -1414,13 +1462,23 @@ async function getBundledCSS() {
   return bundledCSS;
 }
 
+// FNV-1a 32-bit — cheap O(n) fingerprint; combined with length to make
+// collisions on real-world documents effectively impossible.
+function cheapHash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(36);
+}
+
 function getRenderKey(rawMd) {
-  return [
-    rawMd,
-    pageSizeSelect.value,
-    pageNumToggle.checked ? '1' : '0',
-    customCssArea.value,
-  ].join('\u0001');
+  const css = customCssArea.value;
+  return cheapHash(rawMd) + ':' + rawMd.length + '|' +
+         pageSizeSelect.value + '|' +
+         (pageNumToggle.checked ? '1' : '0') + '|' +
+         cheapHash(css) + ':' + css.length;
 }
 
 function flushQueuedRender() {
@@ -1483,28 +1541,107 @@ const PAGEBREAK_MD_RE = /<!--\s*pagebreak\s*-->/gi;
 // We use a raw HTML block that Paged.js will parse as a page break.
 const PAGEBREAK_HTML_SENTINEL = '<div class="md2pdf-pagebreak"></div>';
 
+// Pandoc-style sizing on Markdown images:
+//   ![alt](url){width=300}
+//   ![alt](url){width=50%}
+//   ![alt](url){width=300 height=200}
+//   ![alt](url){w=300}            (shorthand)
+// Numbers without units default to px; % stays %; px/em/rem/vw/vh are passed through.
+const IMG_SIZE_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)\{([^{}]+)\}/g;
+
+function parseImgSizeAttrs(attrStr) {
+  const out = {};
+  const re = /(width|height|w|h)\s*=\s*("([^"]*)"|'([^']*)'|([^\s,;]+))/gi;
+  let m;
+  while ((m = re.exec(attrStr)) !== null) {
+    const key = m[1].toLowerCase().startsWith('w') ? 'width' : 'height';
+    const rawVal = m[3] || m[4] || m[5] || '';
+    if (!rawVal) continue;
+    out[key] = /^\d+(\.\d+)?$/.test(rawVal) ? rawVal + 'px' : rawVal;
+  }
+  return out;
+}
+
+function escapeHtmlAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function applyImageSizes(text) {
+  if (text.indexOf('){') === -1) return text;
+  return text.replace(IMG_SIZE_RE, (match, alt, url, title, attrs) => {
+    const size = parseImgSizeAttrs(attrs);
+    if (!size.width && !size.height) return match;
+    const style = ['width', 'height']
+      .filter((k) => size[k])
+      .map((k) => `${k}:${size[k]}`)
+      .join(';');
+    const titleAttr = title ? ` title="${escapeHtmlAttr(title)}"` : '';
+    return `<img src="${escapeHtmlAttr(url)}" alt="${escapeHtmlAttr(alt)}"${titleAttr} style="${style}">`;
+  });
+}
+
 function preprocessMarkdown(raw) {
+  // Step 0 — Honour ![alt](url){width=…} / {height=…} sizing on images.
+  // Done first so the resulting <img> tag is opaque to all later passes.
+  // Fenced code / inline code is protected via the parts-split below; we
+  // additionally guard inline code here so backtick spans on the same line
+  // don't get matched as image attrs.
+  const sizeParts = raw.split(/(^```[\s\S]*?^```|^~~~[\s\S]*?^~~~)/m);
+  const sized = sizeParts.map((part, i) => {
+    if (i % 2 !== 0) return part;
+    const inlines = [];
+    const safe = part.replace(/`[^`]*`/g, (m) => {
+      inlines.push(m);
+      return `\x01${inlines.length - 1}\x01`;
+    });
+    const replaced = applyImageSizes(safe);
+    return replaced.replace(/\x01(\d+)\x01/g, (_, idx) => inlines[idx]);
+  }).join('');
+
   // Step 1 — Resolve markdown inside HTML wrapper blocks (e.g. <div align="center">)
   // so that *italic*, [links](), **bold** etc. are rendered correctly.
   // We do this BEFORE splitting on fenced code blocks so we can skip code fences safely.
-  const withInlineHtml = raw.replace(
-    /(<(div|p|span|section|article|header|footer|blockquote)[^>]*>)([\s\S]*?)(<\/\2>)/gi,
-    (match, openTag, _tag, inner, closeTag) => {
-      // Skip if inner content looks like raw HTML (contains <tags>), leave it alone
-      if (/<[a-zA-Z]/.test(inner)) return match;
-      // Process each non-empty line as inline markdown
-      const processed = inner
-        .split('\n')
-        .map(line => {
-          const trimmed = line.trim();
-          if (!trimmed) return line; // preserve blank lines
-          const parsed = markedObj.parseInline(trimmed);
-          return line.replace(trimmed, parsed);
-        })
-        .join('\n');
-      return openTag + processed + closeTag;
-    }
-  );
+  //
+  // Cheap precheck: only run the (potentially expensive) regex if the doc has at
+  // least one wrapper open AND one wrapper close. While the user is mid-typing a
+  // tag (e.g. `<div style="`) no close exists yet, so we skip entirely and avoid
+  // any backtracking risk.
+  const WRAPPER_OPEN_RE = /<(div|p|span|section|article|header|footer|blockquote)\b/i;
+  const WRAPPER_CLOSE_RE = /<\/(div|p|span|section|article|header|footer|blockquote)>/i;
+  let withInlineHtml = sized;
+  if (WRAPPER_OPEN_RE.test(sized) && WRAPPER_CLOSE_RE.test(sized)) {
+    withInlineHtml = sized.replace(
+      /(<(div|p|span|section|article|header|footer|blockquote)[^>]*>)([\s\S]*?)(<\/\2>)/gi,
+      (match, openTag, _tag, inner, closeTag) => {
+        // Skip if inner content looks like raw HTML (contains <tags>), leave it alone
+        if (/<[a-zA-Z]/.test(inner)) return match;
+        // Process each non-empty line as inline markdown. parseInline can be slow
+        // or throw on partially-typed content; guard it so a half-typed line never
+        // freezes the editor.
+        const processed = inner
+          .split('\n')
+          .map(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return line;
+            // Lines containing `<` are likely partial HTML the user is still
+            // typing — pass through untouched.
+            if (trimmed.indexOf('<') !== -1) return line;
+            try {
+              const parsed = markedObj.parseInline(trimmed);
+              return line.replace(trimmed, parsed);
+            } catch {
+              return line;
+            }
+          })
+          .join('\n');
+        return openTag + processed + closeTag;
+      }
+    );
+  }
 
   // Step 2 — Split on fenced code blocks; protect them from further processing.
   const parts = withInlineHtml.split(/(^```[\s\S]*?^```|^~~~[\s\S]*?^~~~)/m);
@@ -1563,6 +1700,8 @@ function getPagedScreenCss(isDark, viewerBg) {
       background: white !important;
       box-shadow: ${pageBoxShadow} !important;
       border-radius: 2px;
+      outline: none !important;
+      outline-offset: 0 !important;
     }
   }
 
@@ -1655,25 +1794,22 @@ ${pagedCss}
       else document.body.style.zoom = ${currentZoom};
 
       // ---- Apply page borders/shadows via inline style with !important ----
+      // Paged.js sets some styles inline (outline, background); inline beats
+      // CSS !important, so we re-apply ours inline here too.
       var pageBoxes = document.querySelectorAll('.pagedjs_pagebox');
       for (var i = 0; i < pageBoxes.length; i++) {
         var pb = pageBoxes[i];
-        
-        // Paper is ALWAYS white
         pb.style.setProperty('background', 'white', 'important');
-        
-        // Remove buggy outline, use inset box-shadow for a crisp border
         pb.style.removeProperty('outline');
         pb.style.removeProperty('outline-offset');
-        
         pb.style.setProperty('box-shadow', _isDark
           ? 'inset 0 0 0 1px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), 0 6px 30px rgba(255,255,255,0.05)'
           : 'inset 0 0 0 1px rgba(0,0,0,0.15), 0 4px 20px rgba(0,0,0,0.15)', 'important');
       }
-      
+
       var pages = document.querySelectorAll('.pagedjs_page');
       for (var j = 0; j < pages.length; j++) {
-          pages[j].style.setProperty('margin', '0 auto 32px auto', 'important');
+        pages[j].style.setProperty('margin', '0 auto 32px auto', 'important');
       }
 
       var pageCount = document.querySelectorAll('.pagedjs_page').length;
@@ -1844,3 +1980,14 @@ async function loadState() {
 }
 
 loadState();
+
+// Flush any pending debounced writes so closing the tab or backgrounding
+// the page never drops in-flight edits.
+function flushPendingPersistence() {
+  flushTextStateSave();
+  flushImageStoreSave();
+}
+window.addEventListener('beforeunload', flushPendingPersistence);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushPendingPersistence();
+});

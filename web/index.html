@@ -34,6 +34,7 @@
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/overlay.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/simple.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/gfm/gfm.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
@@ -167,7 +168,7 @@
         <div class="modal-section scrollable-section">
           <ul class="feature-list">
             <li><strong>Open Folder</strong> to mount a local directory. Relative image paths like <code>![](img/photo.png)</code> resolve automatically, nothing leaves your machine.</li>
-            <li><strong>Paste or drag images</strong> directly into the editor. Right-click images in the File Explorer to insert at the cursor.</li>
+            <li><strong>Paste or drag images</strong> directly into the editor. Right-click images in the File Explorer to insert at the cursor. Resize with <code>![](img.png){width=300}</code> or <code>{width=50% height=auto}</code>.</li>
             <li>Add <code>&lt;!-- pagebreak --&gt;</code> anywhere to force a page break — watch it appear in the preview immediately.</li>
             <li>Open the <strong>Custom CSS</strong> panel to adjust fonts, colours, spacing. Live preview updates as you type.</li>
             <li>The <strong>title field</strong> at the top becomes the PDF filename when you save.</li>
