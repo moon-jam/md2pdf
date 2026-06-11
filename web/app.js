@@ -87,6 +87,35 @@ function clearRenderWaiters() {
 }
 
 // ============================================================
+//  Toast notifications — non-blocking replacement for alert()
+// ============================================================
+let toastContainer = null;
+
+function showToast(message, { type = 'info', duration = 4000 } = {}) {
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    document.body.appendChild(toastContainer);
+  }
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  toastContainer.appendChild(toast);
+  // Force layout so the enter transition runs
+  void toast.offsetHeight;
+  toast.classList.add('toast-show');
+
+  const remove = () => {
+    toast.classList.remove('toast-show');
+    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    // Fallback removal if transitionend never fires (e.g. tab hidden)
+    setTimeout(() => toast.remove(), 600);
+  };
+  toast.addEventListener('click', remove);
+  setTimeout(remove, duration);
+}
+
+// ============================================================
 //  Status bar — word count + page count
 // ============================================================
 let lastPageCount = 0;
@@ -818,7 +847,7 @@ function saveActiveDraftSnapshot({ syncUi = false } = {}) {
     const conflict = drafts.some((d) => d.id !== draft.id && d.name === nameFromInput);
     if (conflict) {
       if (draftNameInput) draftNameInput.value = draft.name;
-      alert(`Draft name "${nameFromInput}" already exists.`);
+      showToast(`Draft name "${nameFromInput}" already exists.`, { type: 'warning' });
       return;
     }
     draft.name = nameFromInput;
@@ -863,7 +892,7 @@ function createNewDraft() {
 
 function deleteCurrentDraft() {
   if (drafts.length <= 1) {
-    alert('At least one draft is required.');
+    showToast('At least one draft is required.', { type: 'warning' });
     return;
   }
 
@@ -993,10 +1022,108 @@ function flushImageStoreSave() {
   idbSet('imageCounter', imageCounter);
 }
 
-/** Replace all {{img:N}} placeholders in a string with real data URLs. */
+// ---- Blob URL cache ----
+// Embedding base64 directly into the iframe HTML makes the document string
+// huge (a few photos → tens of MB per render). Instead we convert each stored
+// data URL to a Blob once, cache the object URL, and embed the short blob:
+// URL. srcdoc iframes share the parent origin, so blob: URLs resolve fine in
+// the preview and survive into the print dialog (we never revoke while the
+// image is still stored).
+const imageBlobUrlCache = new Map();  // placeholder -> blob: URL
+
+function dataUrlToBlob(dataUrl) {
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0) return null;
+  const header = dataUrl.slice(0, comma);
+  const mime = (header.match(/^data:([^;,]+)/) || [])[1] || 'application/octet-stream';
+  const body = dataUrl.slice(comma + 1);
+  if (/;base64$/i.test(header)) {
+    const bin = atob(body);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  return new Blob([decodeURIComponent(body)], { type: mime });
+}
+
+function getImageRenderUrl(placeholder) {
+  const cached = imageBlobUrlCache.get(placeholder);
+  if (cached) return cached;
+  const dataUrl = imageStore[placeholder];
+  if (!dataUrl) return null;
+  try {
+    const blob = dataUrlToBlob(dataUrl);
+    if (!blob) return dataUrl;
+    const url = URL.createObjectURL(blob);
+    imageBlobUrlCache.set(placeholder, url);
+    return url;
+  } catch {
+    return dataUrl; // fall back to inline base64 on any decode hiccup
+  }
+}
+
+function revokeImageBlobUrl(placeholder) {
+  const url = imageBlobUrlCache.get(placeholder);
+  if (url) {
+    URL.revokeObjectURL(url);
+    imageBlobUrlCache.delete(placeholder);
+  }
+}
+
+/** Replace all {{img:N}} placeholders in a string with short blob: URLs. */
 function resolveImages(text) {
   if (!imageStore || Object.keys(imageStore).length === 0) return text;
-  return text.replace(/\{\{[^}]+\}\}/g, (m) => imageStore[m] || m);
+  return text.replace(/\{\{[^}]+\}\}/g, (m) => getImageRenderUrl(m) || m);
+}
+
+// ---- Manual cleanup of unreferenced images ----
+// An image counts as "in use" if its placeholder appears in the current editor
+// text OR in ANY saved draft — a user may switch drafts, so we never auto-prune.
+function collectUsedImagePlaceholders() {
+  const used = new Set();
+  const scan = (text) => {
+    if (!text) return;
+    for (const m of text.matchAll(/\{\{[^}]+\}\}/g)) used.add(m[0]);
+  };
+  scan(cm.getValue());
+  for (const draft of drafts) scan(draft.text);
+  return used;
+}
+
+function cleanupUnusedImages() {
+  const keys = Object.keys(imageStore);
+  if (!keys.length) {
+    showToast('No stored images to clean.', { type: 'info' });
+    return;
+  }
+  const used = collectUsedImagePlaceholders();
+  const orphans = keys.filter((k) => !used.has(k));
+  if (!orphans.length) {
+    showToast(`All ${keys.length} stored image(s) are still referenced — nothing to clean.`, { type: 'info' });
+    return;
+  }
+  if (!confirm(`Remove ${orphans.length} stored image(s) not referenced by any draft? This cannot be undone.`)) return;
+  for (const k of orphans) {
+    delete imageStore[k];
+    revokeImageBlobUrl(k);
+  }
+  // Write through immediately — flushImageStoreSave() is a no-op unless a
+  // debounced save is already pending.
+  clearTimeout(imageStoreSaveTimer);
+  imageStoreSaveTimer = null;
+  idbSet('imageStore', imageStore);
+  idbSet('imageCounter', imageCounter);
+  showToast(`Removed ${orphans.length} unused image(s); ${Object.keys(imageStore).length} kept.`, { type: 'success' });
+}
+
+const imageCleanupBtn = document.getElementById('image-cleanup-btn');
+if (imageCleanupBtn) {
+  imageCleanupBtn.addEventListener('click', () => {
+    // Snapshot the active draft first so collectUsedImagePlaceholders sees
+    // the latest text for every draft.
+    saveActiveDraftSnapshot();
+    cleanupUnusedImages();
+  });
 }
 
 // ============================================================
@@ -1193,17 +1320,24 @@ function showImagePreview(dataUrl, filename) {
     if (e.target === overlay) closeImagePreview();
   });
 
-  // Esc to close
-  const escHandler = (e) => {
-    if (e.key === 'Escape') { closeImagePreview(); document.removeEventListener('keydown', escHandler); }
+  // Esc to close — handler is deregistered in closeImagePreview() so it can't
+  // leak when the preview is closed by button/backdrop click instead of Esc.
+  imagePreviewEscHandler = (e) => {
+    if (e.key === 'Escape') closeImagePreview();
   };
-  document.addEventListener('keydown', escHandler);
+  document.addEventListener('keydown', imagePreviewEscHandler);
 
   document.body.appendChild(overlay);
 }
 
+let imagePreviewEscHandler = null;
+
 function closeImagePreview() {
   document.querySelectorAll('.img-preview-overlay').forEach(el => el.remove());
+  if (imagePreviewEscHandler) {
+    document.removeEventListener('keydown', imagePreviewEscHandler);
+    imagePreviewEscHandler = null;
+  }
 }
 
 /** Highlight the active .md file in the tree. */
@@ -1288,7 +1422,7 @@ folderInput.addEventListener('change', async (e) => {
   if (mdFile) {
     await loadMdFromFolder(mdFile);
   } else {
-    alert('No .md file found in the selected folder.');
+    showToast('No .md file found in the selected folder.', { type: 'warning' });
   }
 
   e.target.value = '';
@@ -1714,6 +1848,163 @@ function getPagedScreenCss(isDark, viewerBg) {
   `;
 }
 
+// ------------------------------------------------------------------
+//  Persistent preview shell
+//
+//  Each preview iframe is initialised ONCE with this shell document:
+//  it loads Paged.js a single time and then waits for `paged-render`
+//  messages carrying { html, css, zoom, isDark, title }. Re-renders
+//  re-run Paged.Previewer in place instead of reloading the whole
+//  iframe, which skips polyfill re-download/re-parse/re-exec on every
+//  keystroke. CSS/HTML travel via postMessage, so no string-escaping
+//  into srcdoc is needed either.
+// ------------------------------------------------------------------
+const PREVIEW_SHELL_DOC = `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>document</title>
+<style>html, body { background: transparent; margin: 0; }</style>
+<script>
+  window.PagedConfig = { auto: false };
+
+  var _renderBusy = false;
+  var _pendingRender = null;
+
+  function pageBoxShadow(isDark) {
+    return isDark
+      ? 'inset 0 0 0 1px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), 0 6px 30px rgba(255,255,255,0.05)'
+      : 'inset 0 0 0 1px rgba(0,0,0,0.15), 0 4px 20px rgba(0,0,0,0.15)';
+  }
+
+  // Paged.js sets some styles inline (outline, background); inline beats
+  // CSS !important, so we re-apply ours inline after every layout pass.
+  function applyPageDecorations(isDark, zoom) {
+    var container = document.querySelector('.pagedjs_pages');
+    if (container) container.style.zoom = zoom;
+    else document.body.style.zoom = zoom;
+
+    var pageBoxes = document.querySelectorAll('.pagedjs_pagebox');
+    for (var i = 0; i < pageBoxes.length; i++) {
+      var pb = pageBoxes[i];
+      pb.style.setProperty('background', 'white', 'important');
+      pb.style.removeProperty('outline');
+      pb.style.removeProperty('outline-offset');
+      pb.style.setProperty('box-shadow', pageBoxShadow(isDark), 'important');
+    }
+    var pages = document.querySelectorAll('.pagedjs_page');
+    for (var j = 0; j < pages.length; j++) {
+      pages[j].style.setProperty('margin', '0 auto 32px auto', 'important');
+    }
+  }
+
+  async function runRender(msg) {
+    if (_renderBusy) { _pendingRender = msg; return; }
+    _renderBusy = true;
+    try {
+      document.title = msg.title || 'document';
+
+      // Drop styles Paged.js injected during the previous run, then clear
+      // the previous page tree.
+      var stale = document.head.querySelectorAll('style[data-pagedjs-inserted-styles]');
+      for (var i = 0; i < stale.length; i++) stale[i].remove();
+      document.body.innerHTML = '';
+
+      var previewer = new Paged.Previewer();
+      var flow = await previewer.preview(
+        msg.html,
+        [{ 'md2pdf-inline.css': msg.css }],
+        document.body
+      );
+      applyPageDecorations(msg.isDark, msg.zoom);
+      var pageCount = (flow && flow.total) || document.querySelectorAll('.pagedjs_page').length;
+      window.parent.postMessage({ type: 'pagedjs-done', pages: pageCount, renderId: msg.renderId }, '*');
+    } catch (err) {
+      window.parent.postMessage({
+        type: 'pagedjs-error',
+        message: String((err && err.message) || err),
+        renderId: msg.renderId,
+      }, '*');
+    } finally {
+      _renderBusy = false;
+      if (_pendingRender) { var next = _pendingRender; _pendingRender = null; runRender(next); }
+    }
+  }
+
+  document.addEventListener('wheel', function(e) {
+    if (e.ctrlKey) {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'pinch-zoom', delta: e.deltaY }, '*');
+    }
+  }, { passive: false });
+
+  // Report scroll position to the parent for state persistence
+  window.addEventListener('scroll', function() {
+    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    var percent = maxScroll > 0 ? window.scrollY / maxScroll : 0;
+    window.parent.postMessage({ type: 'preview-scroll', percent: percent }, '*');
+  }, { passive: true });
+
+  window.addEventListener('message', function(e) {
+    var d = e.data;
+    if (!d) return;
+    if (d.type === 'paged-render') {
+      runRender(d);
+    } else if (d.type === 'paged-clear') {
+      document.body.innerHTML = '';
+    } else if (d.type === 'theme-change') {
+      document.documentElement.style.setProperty('background-color', d.bg, 'important');
+      var pageBoxes = document.querySelectorAll('.pagedjs_pagebox');
+      for (var i = 0; i < pageBoxes.length; i++) {
+        pageBoxes[i].style.setProperty('background', 'white', 'important');
+        pageBoxes[i].style.removeProperty('outline');
+        pageBoxes[i].style.setProperty('box-shadow', pageBoxShadow(d.dark), 'important');
+      }
+    } else if (d.type === 'editor-scroll') {
+      var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo(0, d.percent * maxScroll);
+    }
+  });
+<\/script>
+<script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js"><\/script>
+<script>window.parent.postMessage({ type: 'paged-shell-ready' }, '*');<\/script>
+</head>
+<body></body>
+</html>`;
+
+const shellReadyFrames = new WeakSet();
+const shellReadyWaiters = new Map();  // frame -> resolve callbacks
+
+window.addEventListener('message', (e) => {
+  if (e.data?.type !== 'paged-shell-ready') return;
+  const frame = [previewFrameA, previewFrameB].find((f) => f.contentWindow === e.source);
+  if (!frame) return;
+  shellReadyFrames.add(frame);
+  const waiters = shellReadyWaiters.get(frame) || [];
+  shellReadyWaiters.delete(frame);
+  waiters.forEach((fn) => fn(true));
+});
+
+function ensureShellReady(frame, timeoutMs = 10000) {
+  if (shellReadyFrames.has(frame)) return Promise.resolve(true);
+  if (!frame.dataset.shellLoading) {
+    frame.dataset.shellLoading = '1';
+    frame.srcdoc = PREVIEW_SHELL_DOC;
+  }
+  return new Promise((resolve) => {
+    const list = shellReadyWaiters.get(frame) || [];
+    list.push(resolve);
+    shellReadyWaiters.set(frame, list);
+    setTimeout(() => {
+      if (!shellReadyFrames.has(frame)) {
+        // Allow a srcdoc retry on the next render attempt (e.g. CDN hiccup)
+        delete frame.dataset.shellLoading;
+        resolve(false);
+      }
+    }, timeoutMs);
+  });
+}
+
 async function render() {
   if (renderInFlight) {
     renderQueued = true;
@@ -1730,8 +2021,7 @@ async function render() {
 
   // Empty editor → clear preview, hide everything
   if (!mdSrc) {
-    getActivePreviewFrame().srcdoc = '';
-    stagingPreviewFrame.srcdoc = '';
+    postToPreviewFrames({ type: 'paged-clear' });
     printBtn.disabled = true;
     previewPane.classList.add('is-empty');
     isRendering = false;
@@ -1768,96 +2058,6 @@ async function render() {
     const viewerBg  = getPreviewBackgroundColor();
     const pagedCss  = getPagedScreenCss(isDark, viewerBg);
 
-    // Build the full document that goes into the iframe.
-    const fullDoc = `<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8">
-<title>${docTitle.value.trim() || 'document'}</title>
-<style>
-${pageAtRule}
-${baseCss}
-${extraCss}
-${pageNumCss}
-${pagedCss}
-</style>
-<script>
-  // Signal Paged.js render completion & wire up pinch-zoom + theme-change
-  var _isDark = ${isDark};
-
-  window.PagedConfig = {
-    auto: true,
-    after: function() {
-      // Zoom inner container instead of body for better centering
-      var container = document.querySelector('.pagedjs_pages');
-      if (container) container.style.zoom = ${currentZoom};
-      else document.body.style.zoom = ${currentZoom};
-
-      // ---- Apply page borders/shadows via inline style with !important ----
-      // Paged.js sets some styles inline (outline, background); inline beats
-      // CSS !important, so we re-apply ours inline here too.
-      var pageBoxes = document.querySelectorAll('.pagedjs_pagebox');
-      for (var i = 0; i < pageBoxes.length; i++) {
-        var pb = pageBoxes[i];
-        pb.style.setProperty('background', 'white', 'important');
-        pb.style.removeProperty('outline');
-        pb.style.removeProperty('outline-offset');
-        pb.style.setProperty('box-shadow', _isDark
-          ? 'inset 0 0 0 1px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), 0 6px 30px rgba(255,255,255,0.05)'
-          : 'inset 0 0 0 1px rgba(0,0,0,0.15), 0 4px 20px rgba(0,0,0,0.15)', 'important');
-      }
-
-      var pages = document.querySelectorAll('.pagedjs_page');
-      for (var j = 0; j < pages.length; j++) {
-        pages[j].style.setProperty('margin', '0 auto 32px auto', 'important');
-      }
-
-      var pageCount = document.querySelectorAll('.pagedjs_page').length;
-      window.parent.postMessage({ type: 'pagedjs-done', pages: pageCount }, '*');
-    }
-  };
-
-  document.addEventListener('wheel', function(e) {
-    if (e.ctrlKey) {
-      e.preventDefault();
-      window.parent.postMessage({ type: 'pinch-zoom', delta: e.deltaY }, '*');
-    }
-  }, { passive: false });
-
-  // Sync scroll from preview to editor
-  // Sync scroll from preview to parent for state persistence
-  window.addEventListener('scroll', function() {
-    var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    var percent = maxScroll > 0 ? window.scrollY / maxScroll : 0;
-    window.parent.postMessage({ type: 'preview-scroll', percent: percent }, '*');
-  }, { passive: true });
-
-  window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'theme-change') {
-      var dark = e.data.dark;
-      document.documentElement.style.setProperty('background-color', e.data.bg, 'important');
-      
-      var pageBoxes = document.querySelectorAll('.pagedjs_pagebox');
-      for (var i = 0; i < pageBoxes.length; i++) {
-        pageBoxes[i].style.setProperty('background', 'white', 'important');
-        pageBoxes[i].style.removeProperty('outline');
-        pageBoxes[i].style.setProperty('box-shadow', dark
-          ? 'inset 0 0 0 1px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1), 0 6px 30px rgba(255,255,255,0.05)'
-          : 'inset 0 0 0 1px rgba(0,0,0,0.15), 0 4px 20px rgba(0,0,0,0.15)', 'important');
-      }
-    } else if (e.data && e.data.type === 'editor-scroll') {
-      var maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-      window.scrollTo(0, e.data.percent * maxScroll);
-    }
-  });
-<\/script>
-<script src="https://unpkg.com/pagedjs@0.4.3/dist/paged.polyfill.js"><\/script>
-</head>
-<body>
-${bodyHtml}
-</body>
-</html>`;
-
     const targetFrame = stagingPreviewFrame;
 
     function finishRender(pageCount) {
@@ -1884,28 +2084,48 @@ ${bodyHtml}
       });
     }
 
-    // Hide loading when Paged.js signals it's done from the staging frame.
+    // Hide loading when the shell signals Paged.js finished (or errored).
     pendingPagedDoneHandler = function onPagedDone(e) {
       if (renderId !== currentRenderId) return;
       if (e.source !== targetFrame.contentWindow) return;
       if (e.data?.type === 'pagedjs-done') {
         finishRender(e.data.pages || 0);
+      } else if (e.data?.type === 'pagedjs-error') {
+        console.error('Paged.js render error:', e.data.message);
+        showToast(`Preview render failed: ${e.data.message}`, { type: 'error', duration: 6000 });
+        finishRender(lastPageCount || 0);
       }
     };
     window.addEventListener('message', pendingPagedDoneHandler);
 
-    targetFrame.srcdoc = fullDoc;
+    // One-time shell boot per frame; subsequent renders reuse the live iframe.
+    const shellOk = await ensureShellReady(targetFrame);
+    if (renderId !== currentRenderId) {
+      finishRenderCycle();
+      return;
+    }
+    if (!shellOk) {
+      throw new Error('preview engine failed to load — check your network connection');
+    }
 
-    // Fallback: if Paged.js never fires (e.g. no network), clear after 5s
-    targetFrame.onload = () => {
-      if (renderId !== currentRenderId) return;
-      if (renderFallbackTimer) clearTimeout(renderFallbackTimer);
-      renderFallbackTimer = setTimeout(() => {
-        finishRender(lastPageCount || 0);
-      }, 5000);
-    };
+    targetFrame.contentWindow.postMessage({
+      type: 'paged-render',
+      renderId,
+      title: docTitle.value.trim() || 'document',
+      html: bodyHtml,
+      css: [pageAtRule, baseCss, extraCss, pageNumCss, pagedCss].join('\n'),
+      zoom: currentZoom,
+      isDark,
+    }, '*');
+
+    // Fallback: if Paged.js never reports done (hung layout), recover after 10s
+    if (renderFallbackTimer) clearTimeout(renderFallbackTimer);
+    renderFallbackTimer = setTimeout(() => {
+      finishRender(lastPageCount || 0);
+    }, 10000);
   } catch (err) {
     console.error('Render failed:', err);
+    showToast(`Preview render failed: ${err.message || err}`, { type: 'error', duration: 6000 });
     clearRenderWaiters();
     printBtn.disabled = false;
     isRendering = false;
@@ -1980,6 +2200,11 @@ async function loadState() {
 }
 
 loadState();
+
+// Pre-warm both preview shells so the first render doesn't wait for
+// Paged.js to boot.
+ensureShellReady(previewFrameA);
+ensureShellReady(previewFrameB);
 
 // Flush any pending debounced writes so closing the tab or backgrounding
 // the page never drops in-flight edits.

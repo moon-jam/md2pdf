@@ -1291,3 +1291,43 @@ select:focus-visible { outline: 2px solid var(--accent); }
 .remember-label input {
   cursor: pointer;
 }
+
+/* ---- Toast notifications ---- */
+#toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  cursor: pointer;
+  max-width: 420px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: var(--sidebar-bg, #fff);
+  color: var(--text, #1f2328);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.toast-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-error   { border-left: 4px solid #d1242f; }
+.toast-warning { border-left: 4px solid #bf8700; }
+.toast-info    { border-left: 4px solid var(--accent); }
+.toast-success { border-left: 4px solid #1a7f37; }
