@@ -70,7 +70,7 @@
       <span>Insert Image</span>
       <input type="file" id="image-input" accept="image/*" multiple>
     </label>
-    <button id="image-cleanup-btn" class="icon-btn" type="button" title="Remove stored images that are no longer referenced by any draft" style="font-size:0.7rem; padding: 4px 8px; width: auto;">🧹 Clean unused images</button>
+    <button id="image-manager-btn" class="icon-btn" type="button" title="Browse stored images per draft, preview them, and clean up unused ones" style="font-size:0.7rem; padding: 4px 8px; width: auto;">🖼️ Manage Images</button>
 
     <div id="drafts-panel">
       <div id="drafts-label">Drafts</div>
@@ -131,6 +131,17 @@
         <button id="explorer-close" class="icon-btn" title="Close">×</button>
       </div>
       <div id="file-tree"></div>
+    </div>
+
+    <div id="image-manager" hidden>
+      <div class="explorer-header">
+        <span class="explorer-title">🖼️ Images</span>
+        <span style="display:flex; gap:4px;">
+          <button id="image-clean-unused-btn" class="icon-btn" title="Remove all unused images">🧹</button>
+          <button id="image-manager-close" class="icon-btn" title="Close">×</button>
+        </span>
+      </div>
+      <div id="image-tree"></div>
     </div>
   </aside>
 

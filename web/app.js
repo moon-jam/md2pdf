@@ -1076,53 +1076,213 @@ function resolveImages(text) {
   return text.replace(/\{\{[^}]+\}\}/g, (m) => getImageRenderUrl(m) || m);
 }
 
-// ---- Manual cleanup of unreferenced images ----
-// An image counts as "in use" if its placeholder appears in the current editor
-// text OR in ANY saved draft — a user may switch drafts, so we never auto-prune.
-function collectUsedImagePlaceholders() {
-  const used = new Set();
-  const scan = (text) => {
-    if (!text) return;
-    for (const m of text.matchAll(/\{\{[^}]+\}\}/g)) used.add(m[0]);
-  };
-  scan(cm.getValue());
-  for (const draft of drafts) scan(draft.text);
-  return used;
+// ============================================================
+//  Image Manager — explorer-style panel listing stored images
+//  grouped per draft (like the folder tree), with used/unused
+//  badges, click-to-preview and per-image / bulk cleanup.
+// ============================================================
+const imageManagerEl       = document.getElementById('image-manager');
+const imageManagerBtn      = document.getElementById('image-manager-btn');
+const imageManagerClose    = document.getElementById('image-manager-close');
+const imageCleanUnusedBtn  = document.getElementById('image-clean-unused-btn');
+const imageTreeEl          = document.getElementById('image-tree');
+
+function scanPlaceholders(text) {
+  const found = new Set();
+  if (text) {
+    for (const m of text.matchAll(/\{\{[^}]+\}\}/g)) found.add(m[0]);
+  }
+  return found;
 }
 
-function cleanupUnusedImages() {
-  const keys = Object.keys(imageStore);
-  if (!keys.length) {
-    showToast('No stored images to clean.', { type: 'info' });
-    return;
+// Placeholder usage across all documents. The active draft uses the live
+// editor text so unsaved edits count.
+function computeImageUsage() {
+  const perDraft = [];
+  const usedAnywhere = new Set();
+  for (const draft of drafts) {
+    const text = draft.id === activeDraftId ? cm.getValue() : draft.text;
+    const refs = scanPlaceholders(text);
+    const stored = [...refs].filter((p) => imageStore[p]);
+    if (stored.length) perDraft.push({ draft, placeholders: stored });
+    for (const p of stored) usedAnywhere.add(p);
   }
-  const used = collectUsedImagePlaceholders();
-  const orphans = keys.filter((k) => !used.has(k));
-  if (!orphans.length) {
-    showToast(`All ${keys.length} stored image(s) are still referenced — nothing to clean.`, { type: 'info' });
-    return;
-  }
-  if (!confirm(`Remove ${orphans.length} stored image(s) not referenced by any draft? This cannot be undone.`)) return;
-  for (const k of orphans) {
-    delete imageStore[k];
-    revokeImageBlobUrl(k);
-  }
+  const unused = Object.keys(imageStore).filter((p) => !usedAnywhere.has(p));
+  return { perDraft, unused };
+}
+
+function imageDisplayName(placeholder) {
+  // '{{img:photo.png}}' -> 'photo.png', '{{img:3}}' -> 'img:3'
+  const inner = placeholder.slice(2, -2);
+  const stripped = inner.replace(/^img:/, '');
+  return /^\d+(-\d+)?$/.test(stripped) ? inner : stripped;
+}
+
+function deleteStoredImage(placeholder) {
+  delete imageStore[placeholder];
+  revokeImageBlobUrl(placeholder);
   // Write through immediately — flushImageStoreSave() is a no-op unless a
   // debounced save is already pending.
   clearTimeout(imageStoreSaveTimer);
   imageStoreSaveTimer = null;
   idbSet('imageStore', imageStore);
   idbSet('imageCounter', imageCounter);
-  showToast(`Removed ${orphans.length} unused image(s); ${Object.keys(imageStore).length} kept.`, { type: 'success' });
 }
 
-const imageCleanupBtn = document.getElementById('image-cleanup-btn');
-if (imageCleanupBtn) {
-  imageCleanupBtn.addEventListener('click', () => {
-    // Snapshot the active draft first so collectUsedImagePlaceholders sees
-    // the latest text for every draft.
+function makeImageTreeItem(placeholder, used) {
+  const item = document.createElement('div');
+  item.className = 'tree-item';
+  const name = imageDisplayName(placeholder);
+  const thumbUrl = getImageRenderUrl(placeholder);
+
+  const thumb = document.createElement('img');
+  thumb.className = 'img-thumb';
+  thumb.loading = 'lazy';
+  if (thumbUrl) thumb.src = thumbUrl;
+
+  const label = document.createElement('span');
+  label.className = 'tree-name';
+  label.textContent = name;
+  item.title = name + ' — click to preview';
+
+  const badge = document.createElement('span');
+  badge.className = 'tree-badge ' + (used ? 'badge-used' : 'badge-unused');
+  badge.textContent = used ? 'used' : 'unused';
+
+  item.appendChild(thumb);
+  item.appendChild(label);
+  item.appendChild(badge);
+
+  if (!used) {
+    const del = document.createElement('button');
+    del.className = 'icon-btn img-delete-btn';
+    del.title = 'Delete this image';
+    del.textContent = '\u2715';
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteStoredImage(placeholder);
+      renderImageManager();
+      showToast('Removed "' + name + '".', { type: 'success' });
+    });
+    item.appendChild(del);
+  }
+
+  item.addEventListener('click', () => {
+    const dataUrl = imageStore[placeholder];
+    if (dataUrl) showImagePreview(dataUrl, name);
+  });
+
+  return item;
+}
+
+function makeImageTreeFolder(title, icon, count) {
+  const toggle = document.createElement('div');
+  toggle.className = 'tree-folder-toggle';
+  toggle.innerHTML = '<span class="chevron">\u25bc</span><span class="tree-icon">' + icon + '</span>';
+  const titleEl = document.createElement('span');
+  titleEl.textContent = title + ' (' + count + ')';
+  toggle.appendChild(titleEl);
+
+  const children = document.createElement('div');
+  children.className = 'tree-children';
+
+  toggle.addEventListener('click', () => {
+    toggle.classList.toggle('collapsed');
+    children.classList.toggle('collapsed');
+  });
+  return { toggle, children };
+}
+
+// Folder open/closed state survives live refreshes (keyed by draft id / 'unused')
+const imageManagerCollapsed = new Set();
+
+function addImageManagerFolder(key, title, icon, placeholders, used) {
+  const { toggle, children } = makeImageTreeFolder(title, icon, placeholders.length);
+  if (imageManagerCollapsed.has(key)) {
+    toggle.classList.add('collapsed');
+    children.classList.add('collapsed');
+  }
+  toggle.addEventListener('click', () => {
+    if (toggle.classList.contains('collapsed')) imageManagerCollapsed.add(key);
+    else imageManagerCollapsed.delete(key);
+  });
+  imageTreeEl.appendChild(toggle);
+  imageTreeEl.appendChild(children);
+  for (const p of placeholders) children.appendChild(makeImageTreeItem(p, used));
+}
+
+function renderImageManager() {
+  if (!imageTreeEl) return;
+  imageTreeEl.innerHTML = '';
+
+  const { perDraft, unused } = computeImageUsage();
+
+  if (!perDraft.length && !unused.length) {
+    const empty = document.createElement('div');
+    empty.className = 'image-tree-empty';
+    empty.textContent = 'No stored images yet. Paste or insert an image to see it here.';
+    imageTreeEl.appendChild(empty);
+    if (imageCleanUnusedBtn) imageCleanUnusedBtn.disabled = true;
+    return;
+  }
+
+  for (const { draft, placeholders } of perDraft) {
+    addImageManagerFolder(draft.id, draft.name, '\ud83d\udcdd', placeholders, true);
+  }
+
+  if (unused.length) {
+    addImageManagerFolder('unused', 'Unused', '\ud83d\uddd1\ufe0f', unused, false);
+  }
+
+  if (imageCleanUnusedBtn) {
+    imageCleanUnusedBtn.disabled = !unused.length;
+    imageCleanUnusedBtn.title = unused.length
+      ? 'Remove all ' + unused.length + ' unused image(s)'
+      : 'No unused images';
+  }
+}
+
+// Live refresh while the panel is open \u2014 debounced so fast typing only
+// rebuilds the tree once. computeImageUsage() reads the live editor text for
+// the active draft, so no draft snapshot is needed here.
+let imageManagerRefreshTimer = null;
+function scheduleImageManagerRefresh() {
+  if (!imageManagerEl || imageManagerEl.hidden) return;
+  clearTimeout(imageManagerRefreshTimer);
+  imageManagerRefreshTimer = setTimeout(() => {
+    imageManagerRefreshTimer = null;
+    if (!imageManagerEl.hidden) renderImageManager();
+  }, 400);
+}
+
+if (imageManagerBtn) {
+  imageManagerBtn.addEventListener('click', () => {
+    const opening = imageManagerEl.hidden;
+    imageManagerEl.hidden = !opening;
+    if (opening) {
+      // Snapshot once on open so other drafts' texts are current too.
+      saveActiveDraftSnapshot();
+      renderImageManager();
+    }
+  });
+}
+
+if (imageManagerClose) {
+  imageManagerClose.addEventListener('click', () => { imageManagerEl.hidden = true; });
+}
+
+if (imageCleanUnusedBtn) {
+  imageCleanUnusedBtn.addEventListener('click', () => {
     saveActiveDraftSnapshot();
-    cleanupUnusedImages();
+    const { unused } = computeImageUsage();
+    if (!unused.length) {
+      showToast('No unused images to clean.', { type: 'info' });
+      return;
+    }
+    if (!confirm('Remove ' + unused.length + ' image(s) not referenced by any draft? This cannot be undone.')) return;
+    for (const p of unused) deleteStoredImage(p);
+    renderImageManager();
+    showToast('Removed ' + unused.length + ' unused image(s).', { type: 'success' });
   });
 }
 
@@ -1435,6 +1595,7 @@ cm.on('change', () => {
   scheduleRender();
   scheduleTitleFromH1Update();
   scheduleTextStateSave();
+  scheduleImageManagerRefresh();
 });
 
 let lastScrollPercent = 0;
