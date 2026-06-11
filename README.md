@@ -1,7 +1,7 @@
 <div align="center">
   <h1><code>md2pdf</code></h1>
   <p>Markdown to PDF with a live paginated preview.</p>
-  <p>🌐 <a href="https://moon-jam.me/md2pdf">moon-jam.me/md2pdf</a> — runs entirely in the browser</p>
+  <p>🌐 <a href="https://md2pdf.moon-jam.me">md2pdf.moon-jam.me</a> — runs entirely in the browser</p>
   <p><strong>English</strong> | <a href="README.zh-TW.md">繁體中文</a></p>
 </div>
 
@@ -19,7 +19,7 @@ Built on [Paged.js](https://pagedjs.org/) for live preview layout, [Vivliostyle]
 
 ### Web editor (no install)
 
-[moon-jam.me/md2pdf](https://moon-jam.me/md2pdf) — no install needed.
+[md2pdf.moon-jam.me](https://md2pdf.moon-jam.me) — no install needed.
 
 Pure frontend: your content stays in your browser, with no server upload.
 

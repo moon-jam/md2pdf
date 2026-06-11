@@ -1,7 +1,7 @@
 <div align="center">
   <h1><code>md2pdf</code></h1>
   <p>把 Markdown 轉成 PDF，附即時分頁預覽。</p>
-  <p>🌐 <a href="https://moon-jam.me/md2pdf">moon-jam.me/md2pdf</a> — 直接在瀏覽器使用，無需安裝</p>
+  <p>🌐 <a href="https://md2pdf.moon-jam.me">md2pdf.moon-jam.me</a> — 直接在瀏覽器使用，無需安裝</p>
   <p><a href="README.md">English</a> | <strong>繁體中文</strong></p>
 </div>
 
@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/82c6781a-c8ed-4e33-8713-ea0f95bc0cf6
 
 ### 網頁版（免安裝）
 
-[moon-jam.me/md2pdf](https://moon-jam.me/md2pdf)—不用安裝。
+[md2pdf.moon-jam.me](https://md2pdf.moon-jam.me)—不用安裝。
 
 這是純前端工具，內容都留在你的瀏覽器。
 
