@@ -677,6 +677,8 @@ document.addEventListener('mousemove', (e) => {
 
 document.addEventListener('mouseup', () => {
   if (isResizing || isSidebarResizing) {
+    const dragCollapsedSidebar =
+      isSidebarResizing && document.body.classList.contains('sidebar-collapsed');
     isResizing = false;
     isSidebarResizing = false;
     document.body.classList.remove('is-resizing');
@@ -684,11 +686,57 @@ document.addEventListener('mouseup', () => {
     resizerEl.classList.remove('resizing');
     if (sidebarResizer) sidebarResizer.classList.remove('resizing');
     setPreviewPointerEvents('');
+    if (dragCollapsedSidebar) maybeShowSidebarHint();
   }
 });
 
+// ---- "Sidebar hidden" hint ----
+// Dragging the sidebar shut is easy to do without realising how to undo it.
+// The hint is a small popover anchored to the toggle button (no backdrop),
+// with an arrow pointing at it; the checkbox mirrors the info modal's
+// "don't show again" behaviour.
+const sidebarHintPopover  = document.getElementById('sidebar-hint-popover');
+const sidebarHintClose    = document.getElementById('sidebar-hint-close');
+const sidebarHintDontShow = document.getElementById('sidebar-hint-dont-show');
+const SIDEBAR_HINT_HIDE_KEY = 'md2pdf_hide_sidebar_hint';
+
+function maybeShowSidebarHint() {
+  if (!sidebarHintPopover || !sidebarToggleBtn) return;
+  if (localStorage.getItem(SIDEBAR_HINT_HIDE_KEY) === 'true') return;
+  const rect = sidebarToggleBtn.getBoundingClientRect();
+  sidebarHintPopover.style.top = `${rect.bottom + 10}px`;
+  sidebarHintPopover.style.left = `${Math.max(8, rect.left - 6)}px`;
+  sidebarHintPopover.hidden = false;
+  sidebarToggleBtn.classList.add('attention-pulse');
+}
+
+function closeSidebarHint() {
+  if (!sidebarHintPopover || sidebarHintPopover.hidden) return;
+  sidebarHintPopover.hidden = true;
+  sidebarToggleBtn?.classList.remove('attention-pulse');
+  if (sidebarHintDontShow?.checked) {
+    localStorage.setItem(SIDEBAR_HINT_HIDE_KEY, 'true');
+  }
+}
+
+if (sidebarHintPopover) {
+  sidebarHintClose?.addEventListener('click', closeSidebarHint);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSidebarHint();
+  });
+  // Click anywhere outside the popover (except the toggle button, which has
+  // its own handler) dismisses it.
+  document.addEventListener('mousedown', (e) => {
+    if (sidebarHintPopover.hidden) return;
+    if (sidebarHintPopover.contains(e.target)) return;
+    if (sidebarToggleBtn && sidebarToggleBtn.contains(e.target)) return;
+    closeSidebarHint();
+  });
+}
+
 if (sidebarToggleBtn) {
   sidebarToggleBtn.addEventListener('click', () => {
+    closeSidebarHint();
     if (document.body.classList.contains('sidebar-collapsed')) {
       document.body.classList.remove('sidebar-collapsed');
       document.body.style.setProperty('--sidebar-w', '240px');
@@ -1453,7 +1501,7 @@ function makeImageTreeItem(placeholder, used) {
   const label = document.createElement('span');
   label.className = 'tree-name';
   label.textContent = name;
-  item.title = name + ' — click to preview';
+  item.title = name + ' (click to preview)';
 
   const badge = document.createElement('span');
   badge.className = 'tree-badge ' + (used ? 'badge-used' : 'badge-unused');

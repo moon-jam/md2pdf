@@ -1564,3 +1564,86 @@ select:focus-visible { outline: 2px solid var(--accent); }
 .folder-info-tip:hover {
   display: block;
 }
+
+/* ---- Sidebar-hidden hint popover (anchored to the toggle button) ---- */
+#sidebar-hint-popover {
+  position: fixed;
+  z-index: 9000;
+  width: 250px;
+  padding: 12px 14px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  animation: fadeSlideIn 0.2s ease;
+}
+
+#sidebar-hint-popover p {
+  margin: 0 18px 8px 0;
+  color: var(--text);
+}
+
+#sidebar-hint-popover .remember-label {
+  margin-bottom: 0;
+  font-size: 0.76rem;
+}
+
+#sidebar-hint-popover .hint-arrow {
+  position: absolute;
+  top: -6px;
+  left: 14px;
+  width: 10px;
+  height: 10px;
+  background: var(--sidebar-bg);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+
+#sidebar-hint-popover .hint-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#sidebar-hint-popover .hint-close:hover {
+  background: var(--accent-hover);
+  color: var(--accent);
+}
+
+/* Pulse ring drawing attention to the sidebar toggle while the hint is open */
+.attention-pulse {
+  position: relative;
+  animation: attention-pulse 1.2s ease-out infinite;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+@keyframes attention-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0.45); }
+  70%  { box-shadow: 0 0 0 9px rgba(9, 105, 218, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(9, 105, 218, 0); }
+}
+
+[data-theme="dark"] .attention-pulse {
+  animation-name: attention-pulse-dark;
+}
+
+@keyframes attention-pulse-dark {
+  0%   { box-shadow: 0 0 0 0 rgba(137, 180, 250, 0.5); }
+  70%  { box-shadow: 0 0 0 9px rgba(137, 180, 250, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(137, 180, 250, 0); }
+}
