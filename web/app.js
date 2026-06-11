@@ -1662,6 +1662,188 @@ if (imageCleanUnusedBtn) {
 }
 
 // ============================================================
+//  Export draft + images as .zip
+//
+//  Hand-rolled store-only ZIP writer: images are already compressed
+//  (PNG/JPEG), so deflate would buy little and a dependency-free
+//  ~60-line writer keeps the no-build setup. Filenames are flagged
+//  as UTF-8 so non-ASCII titles survive.
+// ============================================================
+const CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC32_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// entries: [{ path: 'folder/file.ext', bytes: Uint8Array }]
+function buildZip(entries) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  const now = new Date();
+  const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xffff;
+  const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xffff;
+
+  for (const { path, bytes } of entries) {
+    const nameBytes = encoder.encode(path);
+    const crc = crc32(bytes);
+
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);   // local file header signature
+    local.setUint16(4, 20, true);           // version needed to extract
+    local.setUint16(6, 0x0800, true);       // general purpose flags: UTF-8 names
+    local.setUint16(8, 0, true);            // method: store
+    local.setUint16(10, dosTime, true);
+    local.setUint16(12, dosDate, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, bytes.length, true);  // compressed size
+    local.setUint32(22, bytes.length, true);  // uncompressed size
+    local.setUint16(26, nameBytes.length, true);
+    local.setUint16(28, 0, true);             // extra field length
+    parts.push(new Uint8Array(local.buffer), nameBytes, bytes);
+
+    const central = new DataView(new ArrayBuffer(46));
+    central.setUint32(0, 0x02014b50, true); // central directory signature
+    // High byte 3 = Unix host. Info-ZIP unzip assumes CP437 names for
+    // DOS-host (0) archives even with the UTF-8 flag set, which mangles
+    // non-ASCII filenames on extraction.
+    central.setUint16(4, (3 << 8) | 20, true); // version made by
+    central.setUint16(6, 20, true);         // version needed
+    central.setUint16(8, 0x0800, true);     // UTF-8 names
+    central.setUint16(10, 0, true);         // method: store
+    central.setUint16(12, dosTime, true);
+    central.setUint16(14, dosDate, true);
+    central.setUint32(16, crc, true);
+    central.setUint32(20, bytes.length, true);
+    central.setUint32(24, bytes.length, true);
+    central.setUint16(28, nameBytes.length, true);
+    // Unix-host archives read file permissions from the attribute high
+    // bits; without this extracted files get mode 000.
+    central.setUint32(38, 0o644 << 16, true); // external attrs: rw-r--r--
+    central.setUint32(42, offset, true);    // local header offset
+    centralParts.push(new Uint8Array(central.buffer), nameBytes);
+
+    offset += 30 + nameBytes.length + bytes.length;
+  }
+
+  let centralSize = 0;
+  for (const p of centralParts) centralSize += p.length;
+
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);       // end of central directory
+  end.setUint16(8, entries.length, true);
+  end.setUint16(10, entries.length, true);
+  end.setUint32(12, centralSize, true);
+  end.setUint32(16, offset, true);
+
+  return new Blob([...parts, ...centralParts, new Uint8Array(end.buffer)], { type: 'application/zip' });
+}
+
+function dataUrlToBytes(dataUrl) {
+  const comma = dataUrl.indexOf(',');
+  const header = dataUrl.slice(0, comma);
+  const body = dataUrl.slice(comma + 1);
+  if (/;base64$/i.test(header)) {
+    const bin = atob(body);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+  return new TextEncoder().encode(decodeURIComponent(body));
+}
+
+function sanitizeExportName(s) {
+  return s.replace(/[/\\:*?"<>|]/g, '_').trim() || 'document';
+}
+
+function dedupeExportPath(path, used) {
+  if (!used.has(path)) { used.add(path); return path; }
+  const slash = path.lastIndexOf('/');
+  const dot = path.lastIndexOf('.');
+  const hasExt = dot > slash;
+  const stem = hasExt ? path.slice(0, dot) : path;
+  const ext = hasExt ? path.slice(dot) : '';
+  let n = 2;
+  let candidate;
+  do { candidate = `${stem}-${n}${ext}`; n++; } while (used.has(candidate));
+  used.add(candidate);
+  return candidate;
+}
+
+// Map a placeholder to the relative path its image gets inside the zip.
+//   {{img:img/photo.png}} (folder import)  -> img/photo.png  (structure kept)
+//   {{img:photo.png}}     (file insert)    -> images/photo.png
+//   {{img:3}}             (clipboard)      -> images/img-3.<ext from MIME>
+function exportPathForPlaceholder(placeholder, usedPaths) {
+  const inner = placeholder.slice(2, -2).replace(/^img:/, '');
+  const dataUrl = imageStore[placeholder];
+  const mime = (dataUrl.slice(0, dataUrl.indexOf(',')).match(/^data:([^;,]+)/) || [])[1] || '';
+  const ext = MIME_TO_EXT[mime] || 'png';
+
+  let path;
+  if (inner.includes('/')) {
+    path = inner;
+  } else if (/\.[a-z0-9]+$/i.test(inner)) {
+    path = 'images/' + inner;
+  } else {
+    path = 'images/' + (inner.replace(/[^\w.-]+/g, '-') || 'img') + '.' + ext;
+  }
+  path = path.split('/').map((seg) => seg.replace(/[\\:*?"<>|]/g, '_')).filter(Boolean).join('/');
+  return dedupeExportPath(path, usedPaths);
+}
+
+function exportCurrentDraftZip() {
+  const text = cm.getValue();
+  if (!text.trim()) {
+    showToast('Nothing to export yet.', { type: 'info' });
+    return;
+  }
+
+  const name = sanitizeExportName(docTitle.value.trim() || 'document');
+  const refs = [...new Set([...text.matchAll(/\{\{[^}]+\}\}/g)].map((m) => m[0]))]
+    .filter((p) => imageStore[p]);
+
+  const usedPaths = new Set();
+  const pathByPlaceholder = new Map();
+  for (const p of refs) pathByPlaceholder.set(p, exportPathForPlaceholder(p, usedPaths));
+
+  const mdOut = text.replace(/\{\{[^}]+\}\}/g, (m) => pathByPlaceholder.get(m) || m);
+
+  const entries = [{ path: `${name}/${name}.md`, bytes: new TextEncoder().encode(mdOut) }];
+  for (const [p, relPath] of pathByPlaceholder) {
+    entries.push({ path: `${name}/${relPath}`, bytes: dataUrlToBytes(imageStore[p]) });
+  }
+
+  const blob = buildZip(entries);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${name}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`Exported ${name}.zip (${refs.length} image(s) included).`, { type: 'success' });
+}
+
+const exportZipBtn = document.getElementById('export-zip-btn');
+if (exportZipBtn) {
+  exportZipBtn.addEventListener('click', exportCurrentDraftZip);
+}
+
+// ============================================================
 //  Folder upload — file explorer + resolve local image paths
 // ============================================================
 
