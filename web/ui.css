@@ -1474,3 +1474,63 @@ select:focus-visible { outline: 2px solid var(--accent); }
   margin: 0 5px;
   flex-shrink: 0;
 }
+
+/* ---- Open Folder info dot + hover tooltip ---- */
+#folder-upload-area {
+  overflow: visible;
+  position: relative;
+}
+
+#folder-info {
+  margin-left: auto;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+  cursor: help;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+#folder-info:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.folder-info-tip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.74rem;
+  line-height: 1.55;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  white-space: normal;
+  cursor: default;
+}
+
+.folder-info-tip code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.9em;
+}
+
+#folder-info:hover ~ .folder-info-tip,
+.folder-info-tip:hover {
+  display: block;
+}

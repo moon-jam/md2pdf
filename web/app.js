@@ -91,7 +91,7 @@ function clearRenderWaiters() {
 // ============================================================
 let toastContainer = null;
 
-function showToast(message, { type = 'info', duration = 4000 } = {}) {
+function showToast(message, { type = 'info', duration = 4000, action = null } = {}) {
   if (!toastContainer) {
     toastContainer = document.createElement('div');
     toastContainer.id = 'toast-container';
@@ -100,6 +100,17 @@ function showToast(message, { type = 'info', duration = 4000 } = {}) {
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.textContent = message;
+  if (action) {
+    const actionBtn = document.createElement('button');
+    actionBtn.className = 'toast-action';
+    actionBtn.textContent = action.label;
+    actionBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toast.remove();
+      action.onClick();
+    });
+    toast.appendChild(actionBtn);
+  }
   toastContainer.appendChild(toast);
   // Force layout so the enter transition runs
   void toast.offsetHeight;
@@ -381,6 +392,16 @@ docTitle.addEventListener('input', () => {
   titleEditedByUser = true;
   scheduleTextStateSave();
 });
+
+// The "?" info dot sits inside the Open Folder <label>; block its clicks so
+// hovering/clicking it never opens the directory picker.
+const folderInfoDot = document.getElementById('folder-info');
+if (folderInfoDot) {
+  folderInfoDot.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+}
 
 // ============================================================
 //  CodeMirror
@@ -2069,7 +2090,7 @@ const PAGEBREAK_HTML_SENTINEL = '<div class="md2pdf-pagebreak"></div>';
 //   ![alt](url){width=300 height=200}
 //   ![alt](url){w=300}            (shorthand)
 // Numbers without units default to px; % stays %; px/em/rem/vw/vh are passed through.
-const IMG_SIZE_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)\{([^{}]+)\}/g;
+const MD_IMG_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)(\{[^{}]+\})?/g;
 
 function parseImgSizeAttrs(attrStr) {
   const out = {};
@@ -2092,26 +2113,48 @@ function escapeHtmlAttr(s) {
     .replace(/>/g, '&gt;');
 }
 
-function applyImageSizes(text) {
-  if (text.indexOf('){') === -1) return text;
-  return text.replace(IMG_SIZE_RE, (match, alt, url, title, attrs) => {
-    const size = parseImgSizeAttrs(attrs);
+// A markdown image src that is a plain relative path can't render in the
+// browser: it lives on the user's disk and only resolves after they mount
+// the containing folder (which rewrites it to a {{img:…}} placeholder).
+function isUnresolvedRelativeImageSrc(src) {
+  if (!src || src.startsWith('{{')) return false;
+  if (/^(https?:|data:|blob:|file:|mailto:|\/|#)/i.test(src)) return false;
+  return true;
+}
+
+// Collected during preprocessMarkdown; render() turns these into a hint toast.
+let missingImagePaths = [];
+
+function transformMarkdownImages(text) {
+  if (text.indexOf('![') === -1) return text;
+  return text.replace(MD_IMG_RE, (match, alt, src, title, attrs) => {
+    if (isUnresolvedRelativeImageSrc(src)) {
+      missingImagePaths.push(src);
+      // span (not div) so marked keeps it as inline HTML even inside a
+      // paragraph; CSS turns it into a block placeholder card.
+      return '<span class="md2pdf-missing-img">🖼️ Image not found: <code>' + escapeHtmlAttr(src) + '</code>' +
+        '<span class="md2pdf-missing-img-hint">Use 📁 Open Folder to load the folder containing it, or add the image with Insert Image / paste it into the editor.</span></span>';
+    }
+    if (!attrs) return match;
+    const size = parseImgSizeAttrs(attrs.slice(1, -1));
     if (!size.width && !size.height) return match;
     const style = ['width', 'height']
       .filter((k) => size[k])
       .map((k) => `${k}:${size[k]}`)
       .join(';');
     const titleAttr = title ? ` title="${escapeHtmlAttr(title)}"` : '';
-    return `<img src="${escapeHtmlAttr(url)}" alt="${escapeHtmlAttr(alt)}"${titleAttr} style="${style}">`;
+    return `<img src="${escapeHtmlAttr(src)}" alt="${escapeHtmlAttr(alt)}"${titleAttr} style="${style}">`;
   });
 }
 
 function preprocessMarkdown(raw) {
-  // Step 0 — Honour ![alt](url){width=…} / {height=…} sizing on images.
-  // Done first so the resulting <img> tag is opaque to all later passes.
+  // Step 0 — Transform Markdown images: honour {width=…}/{height=…} sizing
+  // and swap unresolved relative paths for a visible placeholder card.
+  // Done first so the resulting HTML is opaque to all later passes.
   // Fenced code / inline code is protected via the parts-split below; we
   // additionally guard inline code here so backtick spans on the same line
-  // don't get matched as image attrs.
+  // don't get matched as image syntax.
+  missingImagePaths = [];
   const sizeParts = raw.split(/(^```[\s\S]*?^```|^~~~[\s\S]*?^~~~)/m);
   const sized = sizeParts.map((part, i) => {
     if (i % 2 !== 0) return part;
@@ -2120,7 +2163,7 @@ function preprocessMarkdown(raw) {
       inlines.push(m);
       return `\x01${inlines.length - 1}\x01`;
     });
-    const replaced = applyImageSizes(safe);
+    const replaced = transformMarkdownImages(safe);
     return replaced.replace(/\x01(\d+)\x01/g, (_, idx) => inlines[idx]);
   }).join('');
 
@@ -2195,6 +2238,33 @@ function getPagedScreenCss(isDark, viewerBg) {
   .md2pdf-pagebreak {
     break-before: page;
     page-break-before: always;
+  }
+
+  /* ---- unresolved local image placeholder ---- */
+  .md2pdf-missing-img {
+    display: block;
+    border: 2px dashed #d4a017;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 0.8em 0;
+    background: rgba(212, 160, 23, 0.07);
+    color: #8a6d00;
+    font-size: 0.85em;
+    line-height: 1.6;
+    text-align: center;
+    break-inside: avoid;
+  }
+  .md2pdf-missing-img code {
+    background: rgba(212, 160, 23, 0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: inherit;
+  }
+  .md2pdf-missing-img-hint {
+    display: block;
+    font-size: 0.85em;
+    opacity: 0.85;
+    margin-top: 4px;
   }
 
   /* ---- screen-only PDF layout ---- */
@@ -2393,6 +2463,24 @@ function ensureShellReady(frame, timeoutMs = 10000) {
   });
 }
 
+// One hint per draft per session — re-renders of the same document while the
+// user types shouldn't nag, but switching to another draft with its own
+// missing images should still inform them.
+const missingImgHintShownDrafts = new Set();
+
+function notifyMissingImages() {
+  if (!missingImagePaths.length) return;
+  const key = activeDraftId || 'no-draft';
+  if (missingImgHintShownDrafts.has(key)) return;
+  missingImgHintShownDrafts.add(key);
+  const unique = [...new Set(missingImagePaths)];
+  const sample = unique.slice(0, 2).join('", "');
+  showToast(
+    `This document references ${unique.length} local image(s) ("${sample}"${unique.length > 2 ? ', …' : ''}). Open its folder so they can render.`,
+    { type: 'info', duration: 12000, action: { label: '📁 Open Folder', onClick: () => folderInput.click() } }
+  );
+}
+
 async function render() {
   if (renderInFlight) {
     renderQueued = true;
@@ -2433,6 +2521,7 @@ async function render() {
     setMascotRendering(true);
 
     const preprocessed  = preprocessMarkdown(mdSrc);
+    notifyMissingImages();
     const withImages    = resolveImages(preprocessed);
     const bodyHtml      = markedObj.parse(withImages);
 
