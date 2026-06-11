@@ -385,11 +385,13 @@ function scheduleTitleFromH1Update() {
   titleFromH1Timer = setTimeout(() => {
     titleFromH1Timer = null;
     updateTitleFromH1(cm.getValue());
+    syncDraftNameToTitle();
   }, 200);
 }
 
 docTitle.addEventListener('input', () => {
   titleEditedByUser = true;
+  syncDraftNameToTitle();
   scheduleTextStateSave();
 });
 
@@ -868,10 +870,8 @@ window.addEventListener('message', (e) => {
 fileInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  titleEditedByUser = false;
-  cm.setValue(await file.text());
-  uploadLabel.textContent = file.name;
-  scheduleRender();
+  openFileIntoDraft(file.name, await file.text());
+  e.target.value = '';
 });
 
 uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
@@ -881,10 +881,7 @@ uploadArea.addEventListener('drop', async (e) => {
   uploadArea.classList.remove('drag-over');
   const file = e.dataTransfer.files[0];
   if (!file) return;
-  titleEditedByUser = false;
-  cm.setValue(await file.text());
-  uploadLabel.textContent = file.name;
-  scheduleRender();
+  openFileIntoDraft(file.name, await file.text());
 });
 
 imageInput.addEventListener('change', async (e) => {
@@ -991,6 +988,90 @@ function makeDefaultDraftName() {
   return `Draft ${n}`;
 }
 
+// When the user opens a .md file, the active draft adopts the filename
+// (without extension) so the draft list mirrors what is actually loaded.
+function renameActiveDraftToFile(filename) {
+  const draft = getDraftById(activeDraftId);
+  if (!draft) return;
+  const base = draftNameFromFilename(filename);
+  let name = base;
+  let n = 2;
+  while (drafts.some((d) => d.id !== draft.id && d.name === name)) {
+    name = `${base} ${n}`;
+    n++;
+  }
+  draft.name = name;
+  // Filename naming is automatic; let later H1/title changes keep syncing.
+  draft.nameEditedByUser = false;
+  if (draftNameInput) draftNameInput.value = name;
+  persistDrafts();
+  refreshDraftControls();
+}
+
+function draftNameFromFilename(filename) {
+  return filename.replace(/\.(md|markdown)$/i, '').trim() || filename;
+}
+
+// Keep the draft name in lockstep with the document title (the PDF
+// filename, usually auto-derived from the H1). Stops once the user
+// manually renames the draft (draft.nameEditedByUser).
+function syncDraftNameToTitle() {
+  const draft = getDraftById(activeDraftId);
+  if (!draft || draft.nameEditedByUser) return;
+  const title = docTitle.value.trim();
+  if (!title || title === 'Untitled Document') return;
+  if (draft.name === title) return;
+  let name = title;
+  let n = 2;
+  while (drafts.some((d) => d.id !== draft.id && d.name === name)) {
+    name = `${title} ${n}`;
+    n++;
+  }
+  if (draft.name === name) return;
+  draft.name = name;
+  if (draftNameInput) draftNameInput.value = name;
+  persistDrafts();
+  refreshDraftControls();
+}
+
+// Opening a .md file lands in its own draft instead of overwriting the
+// current one:
+//   - a draft with the same name already exists -> reuse it (re-opening the
+//     same file just refreshes that draft)
+//   - the current draft is empty -> reuse it (no point leaving a blank one)
+//   - otherwise -> create a fresh draft, like pressing "New"
+function openFileIntoDraft(filename, text) {
+  saveActiveDraftSnapshot();
+
+  const base = draftNameFromFilename(filename);
+  let target = drafts.find((d) => d.name === base);
+  if (!target) {
+    const current = getDraftById(activeDraftId);
+    if (current && !(current.text || '').trim()) target = current;
+  }
+  if (!target) {
+    target = {
+      id: createDraftId(),
+      name: base,
+      text: '',
+      title: 'Untitled Document',
+      titleEditedByUser: false,
+      updatedAt: Date.now(),
+    };
+    drafts.unshift(target);
+  }
+
+  activeDraftId = target.id;
+  titleEditedByUser = false;
+  docTitle.value = 'Untitled Document';
+  cm.setValue(text);
+  renameActiveDraftToFile(filename);
+  uploadLabel.textContent = filename;
+  persistDrafts();
+  refreshDraftControls();
+  scheduleRender();
+}
+
 function getDraftById(id) {
   return drafts.find((d) => d.id === id) || null;
 }
@@ -1043,6 +1124,8 @@ function saveActiveDraftSnapshot({ syncUi = false } = {}) {
       return;
     }
     draft.name = nameFromInput;
+    // A hand-typed name wins over automatic title sync from now on.
+    draft.nameEditedByUser = true;
   }
 
   persistDrafts();
@@ -1804,10 +1887,8 @@ async function loadMdFromFolder(file) {
   });
 
   // Final editor update
-  uploadLabel.textContent = file.name;
-  cm.setValue(mdText);
+  openFileIntoDraft(file.name, mdText);
   setActiveFile(file.webkitRelativePath);
-  scheduleRender();
 }
 
 folderInput.addEventListener('change', async (e) => {
