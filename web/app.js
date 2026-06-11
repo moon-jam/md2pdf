@@ -610,17 +610,23 @@ function applyTheme(isDark) {
   });
 }
 
-// 1. Detect System Theme on load
+// 1. Initial theme: stored manual choice wins, otherwise system preference.
+//    (The inline <head> script already set data-theme with the same logic
+//    before first paint; this just syncs the toggle and preview frames.)
+const THEME_STORAGE_KEY = 'md2pdf_theme';
 const systemDarkMode = window.matchMedia('(prefers-color-scheme: dark)');
-applyTheme(systemDarkMode.matches);
+const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+applyTheme(storedTheme ? storedTheme === 'dark' : systemDarkMode.matches);
 
-// 2. Listen for System Theme changes
+// 2. Follow system theme changes only while the user hasn't chosen manually
 systemDarkMode.addEventListener('change', (e) => {
+  if (localStorage.getItem(THEME_STORAGE_KEY)) return;
   applyTheme(e.matches);
 });
 
-// 3. Manual Toggle override
+// 3. Manual toggle: apply and persist so reloads keep the choice
 themeToggle.addEventListener('change', (e) => {
+  localStorage.setItem(THEME_STORAGE_KEY, e.target.checked ? 'dark' : 'light');
   applyTheme(e.target.checked);
 });
 
