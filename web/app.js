@@ -2556,8 +2556,11 @@ function notifyMissingImages() {
   missingImgHintShownDrafts.add(key);
   const unique = [...new Set(missingImagePaths)];
   const sample = unique.slice(0, 2).join('", "');
+  const plural = unique.length > 1;
   showToast(
-    `This document references ${unique.length} local image(s) ("${sample}"${unique.length > 2 ? ', …' : ''}). Open its folder so they can render.`,
+    `Image${plural ? 's' : ''} not found: "${sample}"${unique.length > 2 ? ', …' : ''}. ` +
+    `Use 📁 Open Folder to load the folder containing ${plural ? 'them' : 'it'}, ` +
+    `or add the image${plural ? 's' : ''} with Insert Image / paste into the editor.`,
     { type: 'info', duration: 12000, action: { label: '📁 Open Folder', onClick: () => folderInput.click() } }
   );
 }

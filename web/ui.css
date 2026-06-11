@@ -1339,6 +1339,36 @@ select:focus-visible { outline: 2px solid var(--accent); }
 .toast-info    { border-left: 4px solid var(--accent); }
 .toast-success { border-left: 4px solid #1a7f37; }
 
+.toast-action {
+  display: block;
+  margin: 8px auto 0;
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.toast-action:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent);
+}
+
+[data-theme="dark"] .toast-action {
+  background: #313244;
+  border-color: #45475a;
+  color: #89b4fa;
+}
+
+[data-theme="dark"] .toast-action:hover {
+  background: #45475a;
+  border-color: #89b4fa;
+}
+
 /* ---- Image Manager panel ---- */
 #image-manager {
   margin-top: 0;
