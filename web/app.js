@@ -393,6 +393,177 @@ const cm = CodeMirror.fromTextArea(editorTextarea, {
 });
 
 // ============================================================
+//  Editor toolbar (HackMD-style formatting shortcuts)
+// ============================================================
+
+// Wrap the selection with before/after; with no selection, insert a
+// placeholder and select it so the user can type straight over it.
+function tbWrap(before, after, placeholder) {
+  const doc = cm.getDoc();
+  const sel = doc.getSelection();
+  if (sel) {
+    doc.replaceSelection(before + sel + after, 'around');
+  } else {
+    const cur = doc.getCursor();
+    doc.replaceRange(before + placeholder + after, cur);
+    doc.setSelection(
+      { line: cur.line, ch: cur.ch + before.length },
+      { line: cur.line, ch: cur.ch + before.length + placeholder.length }
+    );
+  }
+  cm.focus();
+}
+
+// Toggle a prefix on every selected line (lists, quotes, tasks).
+function tbToggleLinePrefix(prefix, { numbered = false } = {}) {
+  const doc = cm.getDoc();
+  const from = doc.getCursor('from');
+  const to = doc.getCursor('to');
+  const stripRe = /^(\s*)(?:[-*+]\s\[[ x]\]\s|[-*+]\s|\d+\.\s|>\s)?/;
+
+  const allPrefixed = (() => {
+    for (let l = from.line; l <= to.line; l++) {
+      const text = doc.getLine(l);
+      if (!text.trim()) continue;
+      const expected = numbered ? /^\s*\d+\.\s/ : null;
+      if (numbered ? !expected.test(text) : !text.trimStart().startsWith(prefix)) return false;
+    }
+    return true;
+  })();
+
+  cm.operation(() => {
+    let n = 1;
+    for (let l = from.line; l <= to.line; l++) {
+      const text = doc.getLine(l);
+      if (!text.trim()) continue;
+      const m = text.match(stripRe);
+      const indent = m[1] || '';
+      const rest = text.slice(m[0].length);
+      const newPrefix = allPrefixed ? '' : (numbered ? `${n}. ` : prefix);
+      doc.replaceRange(indent + newPrefix + rest,
+        { line: l, ch: 0 }, { line: l, ch: text.length });
+      n++;
+    }
+  });
+  cm.focus();
+}
+
+// Set a heading level on every selected line (replaces any existing #'s).
+function tbSetHeading(level) {
+  const doc = cm.getDoc();
+  const from = doc.getCursor('from');
+  const to = doc.getCursor('to');
+  cm.operation(() => {
+    for (let l = from.line; l <= to.line; l++) {
+      const text = doc.getLine(l);
+      if (!text.trim()) continue;
+      const rest = text.replace(/^\s*#{1,6}\s+/, '').replace(/^\s+/, '');
+      doc.replaceRange('#'.repeat(level) + ' ' + rest,
+        { line: l, ch: 0 }, { line: l, ch: text.length });
+    }
+  });
+  cm.focus();
+}
+
+// Insert a standalone block (table, pagebreak) after the current line,
+// padded with blank lines so it doesn't glue onto surrounding text.
+function tbInsertBlock(text) {
+  const doc = cm.getDoc();
+  const cur = doc.getCursor();
+  const line = doc.getLine(cur.line);
+  const lead = line.trim() === '' ? '\n' : '\n\n';
+  doc.replaceRange(lead + text + '\n', { line: cur.line, ch: line.length });
+  cm.focus();
+}
+
+function tbCode() {
+  const doc = cm.getDoc();
+  const sel = doc.getSelection();
+  if (sel.includes('\n')) {
+    doc.replaceSelection('```\n' + sel + '\n```', 'around');
+    cm.focus();
+  } else {
+    tbWrap('`', '`', 'code');
+  }
+}
+
+// ---- Image width via toolbar ----
+const TB_IMG_RE = /(!\[[^\]]*\]\([^)\s]+(?:\s+"[^"]*")?\))(\{[^{}]*\})?/g;
+
+function tbApplyImageWidth(width) {
+  const doc = cm.getDoc();
+  const cur = doc.getCursor();
+  const lineText = doc.getLine(cur.line);
+  TB_IMG_RE.lastIndex = 0;
+  let m, best = null;
+  while ((m = TB_IMG_RE.exec(lineText)) !== null) {
+    if (!best) best = m;
+    // Prefer the image the cursor is actually inside
+    if (cur.ch >= m.index && cur.ch <= m.index + m[0].length) { best = m; break; }
+  }
+  if (!best) {
+    showToast('Place the cursor on a line containing a Markdown image first.', { type: 'info' });
+    return;
+  }
+  const replacement = width ? `${best[1]}{width=${width}}` : best[1];
+  doc.replaceRange(replacement,
+    { line: cur.line, ch: best.index },
+    { line: cur.line, ch: best.index + best[0].length });
+  cm.focus();
+}
+
+const TB_TABLE_SNIPPET =
+  '| Column 1 | Column 2 | Column 3 |\n' +
+  '| -------- | -------- | -------- |\n' +
+  '|          |          |          |';
+
+const tbActions = {
+  bold:   () => tbWrap('**', '**', 'bold'),
+  italic: () => tbWrap('*', '*', 'italic'),
+  strike: () => tbWrap('~~', '~~', 'strikethrough'),
+  code:   tbCode,
+  quote:  () => tbToggleLinePrefix('> '),
+  ul:     () => tbToggleLinePrefix('- '),
+  ol:     () => tbToggleLinePrefix('', { numbered: true }),
+  task:   () => tbToggleLinePrefix('- [ ] '),
+  link:   () => tbWrap('[', '](url)', 'text'),
+  image:  () => imageInput.click(),
+  table:  () => tbInsertBlock(TB_TABLE_SNIPPET),
+  pagebreak: () => tbInsertBlock('<!-- pagebreak -->'),
+  heading: (btn) => {
+    const r = btn.getBoundingClientRect();
+    showContextMenu(r.left, r.bottom + 4, [
+      { icon: 'H1', label: 'Heading 1', action: () => tbSetHeading(1) },
+      { icon: 'H2', label: 'Heading 2', action: () => tbSetHeading(2) },
+      { icon: 'H3', label: 'Heading 3', action: () => tbSetHeading(3) },
+    ]);
+  },
+  imgsize: (btn) => {
+    const r = btn.getBoundingClientRect();
+    showContextMenu(r.left, r.bottom + 4, [
+      { icon: '◔', label: 'Width 25%',  action: () => tbApplyImageWidth('25%') },
+      { icon: '◑', label: 'Width 50%',  action: () => tbApplyImageWidth('50%') },
+      { icon: '◕', label: 'Width 75%',  action: () => tbApplyImageWidth('75%') },
+      { icon: '●', label: 'Width 100%', action: () => tbApplyImageWidth('100%') },
+      { icon: '✏️', label: 'Custom…', action: () => {
+        const v = prompt('Image width (e.g. 300, 50%, 10em):');
+        if (!v) return;
+        const width = /^\d+(\.\d+)?$/.test(v.trim()) ? v.trim() + 'px' : v.trim();
+        tbApplyImageWidth(width);
+      }},
+      { icon: '🗑️', label: 'Remove size', action: () => tbApplyImageWidth(null) },
+    ]);
+  },
+};
+
+document.querySelectorAll('#editor-toolbar .tb-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const action = tbActions[btn.dataset.cmd];
+    if (action) action(btn);
+  });
+});
+
+// ============================================================
 //  Theme toggle & System Theme Detection
 // ============================================================
 function getPreviewBackgroundColor() {
