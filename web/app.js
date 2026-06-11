@@ -1118,6 +1118,41 @@ function imageDisplayName(placeholder) {
   return /^\d+(-\d+)?$/.test(stripped) ? inner : stripped;
 }
 
+// Feather-style download icon (tray + arrow), matches the sidebar icons.
+const DOWNLOAD_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+
+const MIME_TO_EXT = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+  'image/webp': 'webp',
+  'image/bmp': 'bmp',
+  'image/x-icon': 'ico',
+  'image/avif': 'avif',
+};
+
+function downloadImage(dataUrl, name) {
+  try {
+    const blob = dataUrlToBlob(dataUrl);
+    if (!blob) throw new Error('invalid image data');
+    let filename = (name || 'image').replace(/[/\\:*?"<>|]/g, '_');
+    if (!/\.[a-z0-9]+$/i.test(filename)) {
+      filename += '.' + (MIME_TO_EXT[blob.type] || 'png');
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (e) {
+    showToast('Download failed: ' + (e.message || e), { type: 'error' });
+  }
+}
+
 function deleteStoredImage(placeholder) {
   delete imageStore[placeholder];
   revokeImageBlobUrl(placeholder);
@@ -1153,9 +1188,20 @@ function makeImageTreeItem(placeholder, used) {
   item.appendChild(label);
   item.appendChild(badge);
 
+  // Swaps in where the used/unused badge sits while the row is hovered.
+  const dl = document.createElement('button');
+  dl.className = 'icon-btn img-dl-btn';
+  dl.title = 'Download this image';
+  dl.innerHTML = DOWNLOAD_ICON_SVG;
+  dl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    downloadImage(imageStore[placeholder], name);
+  });
+  item.appendChild(dl);
+
   if (!used) {
     const del = document.createElement('button');
-    del.className = 'icon-btn img-delete-btn';
+    del.className = 'icon-btn img-action-btn img-delete-btn';
     del.title = 'Delete this image';
     del.textContent = '\u2715';
     del.addEventListener('click', (e) => {
@@ -1237,8 +1283,8 @@ function renderImageManager() {
   if (imageCleanUnusedBtn) {
     imageCleanUnusedBtn.disabled = !unused.length;
     imageCleanUnusedBtn.title = unused.length
-      ? 'Remove all ' + unused.length + ' unused image(s)'
-      : 'No unused images';
+      ? 'Clean all ' + unused.length + ' unused image(s)'
+      : 'No unused images to clean';
   }
 }
 
@@ -1459,6 +1505,15 @@ function showImagePreview(dataUrl, filename) {
   closeBtn.title = 'Close (Esc)';
   closeBtn.addEventListener('click', closeImagePreview);
 
+  const downloadBtn = document.createElement('button');
+  downloadBtn.className = 'preview-download';
+  downloadBtn.innerHTML = DOWNLOAD_ICON_SVG.replace('width="12" height="12"', 'width="16" height="16"');
+  downloadBtn.title = 'Download image';
+  downloadBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    downloadImage(dataUrl, filename);
+  });
+
   const container = document.createElement('div');
   container.className = 'preview-container';
 
@@ -1473,6 +1528,7 @@ function showImagePreview(dataUrl, filename) {
   container.appendChild(img);
   container.appendChild(label);
   overlay.appendChild(closeBtn);
+  overlay.appendChild(downloadBtn);
   overlay.appendChild(container);
 
   // Click backdrop (outside image) to close

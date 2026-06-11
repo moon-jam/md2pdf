@@ -1073,7 +1073,8 @@ select:focus-visible { outline: 2px solid var(--accent); }
   to   { opacity: 1; }
 }
 
-.img-preview-overlay .preview-close {
+.img-preview-overlay .preview-close,
+.img-preview-overlay .preview-download {
   position: absolute;
   top: 16px;
   right: 20px;
@@ -1093,7 +1094,13 @@ select:focus-visible { outline: 2px solid var(--accent); }
   backdrop-filter: blur(4px);
 }
 
-.img-preview-overlay .preview-close:hover {
+.img-preview-overlay .preview-download {
+  right: 64px;
+  font-size: 1rem;
+}
+
+.img-preview-overlay .preview-close:hover,
+.img-preview-overlay .preview-download:hover {
   background: rgba(255, 255, 255, 0.3);
   transform: scale(1.1);
 }
@@ -1389,7 +1396,7 @@ select:focus-visible { outline: 2px solid var(--accent); }
   color: #f9e2af;
 }
 
-.img-delete-btn {
+.img-action-btn {
   font-size: 0.65rem;
   padding: 1px 5px;
   width: auto;
@@ -1398,8 +1405,27 @@ select:focus-visible { outline: 2px solid var(--accent); }
   transition: opacity 0.15s;
 }
 
-.tree-item:hover .img-delete-btn {
+.tree-item:hover .img-action-btn {
   opacity: 1;
+}
+
+/* Download button swaps into the badge slot on hover */
+.img-dl-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  width: auto;
+  flex-shrink: 0;
+}
+
+.tree-item:hover .tree-badge.badge-used,
+.tree-item:hover .tree-badge.badge-unused {
+  display: none;
+}
+
+.tree-item:hover .img-dl-btn {
+  display: inline-flex;
 }
 
 .image-tree-empty {
