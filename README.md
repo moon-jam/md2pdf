@@ -27,6 +27,7 @@ Pure frontend: your content stays in your browser, with no server upload.
 - Open a local folder to resolve relative image paths without any upload
 - Paste or drag images straight into the editor
 - Resize images inline with `![alt](image.png){width=300}` or `{width=50% height=auto}`
+- LaTeX math: inline `$E = mc^2$` and display `$$...$$` blocks (KaTeX)
 - Custom CSS panel with live preview
 - `<!-- pagebreak -->` to force page breaks
 - Title field at the top sets the PDF filename

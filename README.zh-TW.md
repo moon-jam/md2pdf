@@ -29,6 +29,7 @@ https://github.com/user-attachments/assets/82c6781a-c8ed-4e33-8713-ea0f95bc0cf6
 - 開啟本機資料夾，相對路徑的圖片自動解析，不需要上傳
 - 直接貼上或拖曳圖片到編輯器
 - 用 `![alt](image.png){width=300}` 或 `{width=50% height=auto}` 直接調整圖片尺寸
+- 支援 LaTeX 數學式：行內 `$E = mc^2$`、區塊 `$$...$$`（KaTeX）
 - Custom CSS 面板，改完立即看到效果
 - `<!-- pagebreak -->` 強制換頁
 - 頂部的標題欄就是匯出 PDF 的檔名

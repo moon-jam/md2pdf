@@ -59,6 +59,17 @@ also work.
 ![icon](icon.svg){width=24px height=24px}
 ```
 
+## Math
+
+Inline math like $E = mc^2$ works with single dollars, and display math
+uses double dollars:
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+
+Dollar amounts like $5 or $10 are left alone.
+
 ## Page breaks
 
 Add `<!-- pagebreak -->` to force a new page. The next section starts on next page:

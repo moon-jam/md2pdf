@@ -780,9 +780,16 @@ if (infoBtn && infoModal && infoCloseBtn) {
 // ============================================================
 //  Load Example Button
 // ============================================================
+// Local dev servers usually send no Cache-Control, so the browser's heuristic
+// cache can keep serving stale files indefinitely; force revalidation there.
+// Production (GitHub Pages) sends max-age=600, so default caching is correct
+// and avoids the extra round-trip.
+const FETCH_CACHE_MODE =
+  ['localhost', '127.0.0.1'].includes(location.hostname) ? 'no-cache' : 'default';
+
 async function fetchExample() {
   try {
-    const response = await fetch('./example.md');
+    const response = await fetch('./example.md', { cache: FETCH_CACHE_MODE });
     return await response.text();
   } catch (err) {
     console.error('Failed to load example.md', err);
@@ -2317,7 +2324,7 @@ const RENDER_AFTER_INFLIGHT_MS = 80;
 
 async function getBundledCSS() {
   if (bundledCSS) return bundledCSS;
-  const r = await fetch('./style.css');
+  const r = await fetch('./style.css', { cache: FETCH_CACHE_MODE });
   bundledCSS = await r.text();
   return bundledCSS;
 }
@@ -2442,6 +2449,62 @@ function isUnresolvedRelativeImageSrc(src) {
 // Collected during preprocessMarkdown; render() turns these into a hint toast.
 let missingImagePaths = [];
 
+// ---- LaTeX math via KaTeX ----
+// Math is rendered to static HTML before marked runs, stashed behind \x03N\x03
+// sentinels so marked can't mangle underscores/asterisks inside formulas, and
+// substituted back into the parsed HTML afterwards.
+let mathSegments = [];
+
+function renderMathSegment(src, displayMode) {
+  if (typeof katex === 'undefined') return null;
+  try {
+    return katex.renderToString(src, { displayMode, throwOnError: false, strict: 'ignore' });
+  } catch {
+    return null;
+  }
+}
+
+function extractMath(text) {
+  if (text.indexOf('$') === -1 && text.indexOf('\\(') === -1 && text.indexOf('\\[') === -1) {
+    return text;
+  }
+  const stash = (html) => {
+    mathSegments.push(html);
+    return `\x03${mathSegments.length - 1}\x03`;
+  };
+  let out = text;
+
+  // Display math first so $$...$$ isn't consumed by the inline rule
+  out = out.replace(/\$\$([\s\S]+?)\$\$/g, (m, src) => {
+    const html = renderMathSegment(src.trim(), true);
+    return html === null ? m : stash(html);
+  });
+  out = out.replace(/\\\[([\s\S]+?)\\\]/g, (m, src) => {
+    const html = renderMathSegment(src.trim(), true);
+    return html === null ? m : stash(html);
+  });
+  out = out.replace(/\\\(([\s\S]+?)\\\)/g, (m, src) => {
+    const html = renderMathSegment(src.trim(), false);
+    return html === null ? m : stash(html);
+  });
+
+  // Inline $...$: single line, non-space right after the opening and before
+  // the closing delimiter, and no digit after the closing one, so plain
+  // dollar amounts ("costs $5 and $10") stay text.
+  out = out.replace(/\$([^$\n]+?)\$(?!\d)/g, (m, src) => {
+    if (/^\s/.test(src) || /\s$/.test(src)) return m;
+    const html = renderMathSegment(src, false);
+    return html === null ? m : stash(html);
+  });
+
+  return out;
+}
+
+function restoreMathSegments(html) {
+  if (!mathSegments.length) return html;
+  return html.replace(/\x03(\d+)\x03/g, (_, i) => mathSegments[i] ?? '');
+}
+
 function transformMarkdownImages(text) {
   if (text.indexOf('![') === -1) return text;
   return text.replace(MD_IMG_RE, (match, alt, src, title, attrs) => {
@@ -2472,6 +2535,7 @@ function preprocessMarkdown(raw) {
   // additionally guard inline code here so backtick spans on the same line
   // don't get matched as image syntax.
   missingImagePaths = [];
+  mathSegments = [];
   const sizeParts = raw.split(/(^```[\s\S]*?^```|^~~~[\s\S]*?^~~~)/m);
   const sized = sizeParts.map((part, i) => {
     if (i % 2 !== 0) return part;
@@ -2480,7 +2544,7 @@ function preprocessMarkdown(raw) {
       inlines.push(m);
       return `\x01${inlines.length - 1}\x01`;
     });
-    const replaced = transformMarkdownImages(safe);
+    const replaced = transformMarkdownImages(extractMath(safe));
     return replaced.replace(/\x01(\d+)\x01/g, (_, idx) => inlines[idx]);
   }).join('');
 
@@ -2639,6 +2703,7 @@ const PREVIEW_SHELL_DOC = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <title>document</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
 <style>html, body { background: transparent; margin: 0; }</style>
 <script>
   window.PagedConfig = { auto: false };
@@ -2843,7 +2908,7 @@ async function render() {
     const preprocessed  = preprocessMarkdown(mdSrc);
     notifyMissingImages();
     const withImages    = resolveImages(preprocessed);
-    const bodyHtml      = markedObj.parse(withImages);
+    const bodyHtml      = restoreMathSegments(markedObj.parse(withImages));
 
     const pageSize   = pageSizeSelect.value;
     const baseCss    = await getBundledCSS();
