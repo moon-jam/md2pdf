@@ -13,6 +13,8 @@ Edit something and watch the right panel update. That's it.
 | **Page size** | A4, Letter, A3, B5 |
 | **Page numbers** | Toggle on/off |
 | **Custom CSS** | Override any style |
+| **Manage Images** | Browse stored images per draft, preview, download, or clean up |
+| **Export .zip** | Download the Markdown file together with its images |
 | **Save as PDF** | Downloads with the title you set at the top |
 
 Your work saves automatically in this browser session.
