@@ -7,7 +7,7 @@
 
 ---
 
-https://github.com/user-attachments/assets/82c6781a-c8ed-4e33-8713-ea0f95bc0cf6
+https://github.com/user-attachments/assets/07db6014-4216-4a40-99a1-97c3763145fb
 
 ## 為什麼用 md2pdf
 
@@ -34,6 +34,8 @@ https://github.com/user-attachments/assets/82c6781a-c8ed-4e33-8713-ea0f95bc0cf6
 - `<!-- pagebreak -->` 強制換頁
 - 頂部的標題欄就是匯出 PDF 的檔名
 - 透過 IndexedDB 在瀏覽器內自動儲存，資料不會送到伺服器
+
+<!-- pagebreak -->
 
 ### 命令列工具（本機與自動化）
 

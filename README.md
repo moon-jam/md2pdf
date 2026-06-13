@@ -7,7 +7,7 @@
 
 ---
 
-https://github.com/user-attachments/assets/82c6781a-c8ed-4e33-8713-ea0f95bc0cf6
+https://github.com/user-attachments/assets/07db6014-4216-4a40-99a1-97c3763145fb
 
 ## Why md2pdf
 
@@ -32,6 +32,8 @@ Pure frontend: your content stays in your browser, with no server upload.
 - `<!-- pagebreak -->` to force page breaks
 - Title field at the top sets the PDF filename
 - Autosaves locally in your browser via IndexedDB
+
+<!-- pagebreak -->
 
 ### CLI (local + scripting)
 
