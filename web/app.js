@@ -415,6 +415,58 @@ const cm = CodeMirror.fromTextArea(editorTextarea, {
   dragDrop: false,
 });
 
+// ---- Deferred asset loading ----
+// Render-time-only libraries (KaTeX for math, Prism language components for
+// code highlighting) and the editor's per-language modes are kept off the
+// initial critical path. They load on idle after the page is interactive, then
+// the first preview render fires. This lets the editor UI paint fast instead of
+// waiting on KaTeX + Paged.js + pagination.
+function loadScript(src) {
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+const PRISM_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/';
+const PRISM_LANGS = ['javascript', 'css', 'markdown', 'python', 'bash', 'diff',
+  'rust', 'go', 'json', 'yaml', 'sql'];
+const CM_MODE_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/';
+const CM_LANGS = ['javascript', 'css', 'python', 'xml', 'diff', 'yaml', 'rust', 'go'];
+
+let appInteractive = false;
+
+async function loadDeferredAssets() {
+  if (appInteractive) return;
+
+  // Editor language modes are cosmetic; load them in parallel and re-highlight
+  // when ready, independent of the render-critical assets below.
+  Promise.all(CM_LANGS.map((m) => loadScript(`${CM_MODE_BASE}${m}/${m}.min.js`)))
+    .then(() => cm.setOption('mode', 'gfm'));
+
+  // KaTeX + Prism components must exist before the first render so math and
+  // code highlight correctly on the first pass.
+  await Promise.all([
+    loadScript('https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js'),
+    ...PRISM_LANGS.map((l) => loadScript(`${PRISM_BASE}prism-${l}.min.js`)),
+  ]);
+
+  appInteractive = true;
+  ensureShellReady(previewFrameA);
+  ensureShellReady(previewFrameB);
+  queueRender(true); // first render, now with all highlighters available
+}
+
+function scheduleDeferredAssets() {
+  const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+  if (document.readyState === 'complete') idle(loadDeferredAssets);
+  else window.addEventListener('load', () => idle(loadDeferredAssets));
+}
+scheduleDeferredAssets();
+
 // ============================================================
 //  Editor toolbar (HackMD-style formatting shortcuts)
 // ============================================================
@@ -2367,6 +2419,10 @@ function finishRenderCycle() {
 }
 
 function queueRender(immediate = false) {
+  // Hold all rendering until deferred assets (KaTeX, Prism, Paged.js shell)
+  // have loaded; loadDeferredAssets() fires the first render itself. This keeps
+  // the heavy preview pipeline off the initial page-load critical path.
+  if (!appInteractive) return;
   clearTimeout(renderTimer);
   if (renderInFlight) {
     renderQueued = true;
@@ -3063,10 +3119,8 @@ async function loadState() {
 
 loadState();
 
-// Pre-warm both preview shells so the first render doesn't wait for
-// Paged.js to boot.
-ensureShellReady(previewFrameA);
-ensureShellReady(previewFrameB);
+// Preview shells are pre-warmed and the first render is triggered by
+// loadDeferredAssets() once idle, so nothing heavy runs during initial load.
 
 // Flush any pending debounced writes so closing the tab or backgrounding
 // the page never drops in-flight edits.

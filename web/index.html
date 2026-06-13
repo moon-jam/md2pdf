@@ -3,20 +3,75 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>md2pdf — Live PDF Preview</title>
+  <title>md2pdf — Markdown to PDF with live preview</title>
+
+  <!-- SEO -->
+  <meta name="description" content="Free online Markdown to PDF converter with a live paginated preview. Real page breaks, margins, syntax highlighting and LaTeX math. Runs entirely in your browser, nothing is uploaded.">
+  <meta name="keywords" content="markdown to pdf, md to pdf, markdown pdf converter, online markdown editor, live preview, page break, katex, latex math, no upload">
+  <meta name="author" content="moon-jam">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://md2pdf.moon-jam.me/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://md2pdf.moon-jam.me/">
+  <meta property="og:title" content="md2pdf — Markdown to PDF with live preview">
+  <meta property="og:description" content="Free online Markdown to PDF converter with a live paginated preview. Real page breaks, syntax highlighting and LaTeX math, all in your browser.">
+  <meta property="og:image" content="https://md2pdf.moon-jam.me/og-image.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="2400">
+  <meta property="og:image:height" content="1260">
+  <meta property="og:site_name" content="md2pdf">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="md2pdf — Markdown to PDF with live preview">
+  <meta name="twitter:description" content="Free online Markdown to PDF converter with a live paginated preview. Runs entirely in your browser, nothing is uploaded.">
+  <meta name="twitter:image" content="https://md2pdf.moon-jam.me/og-image.jpg">
+
+  <!-- Warm up CDN connections early to speed up the many third-party assets -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="dns-prefetch" href="https://unpkg.com">
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-N6H36189J1"></script>
+  <!-- Structured data: helps search engines understand this is a free web app -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "md2pdf",
+    "url": "https://md2pdf.moon-jam.me/",
+    "description": "Free online Markdown to PDF converter with a live paginated preview, syntax highlighting and LaTeX math. Runs entirely in the browser.",
+    "applicationCategory": "Utility",
+    "operatingSystem": "Any (web browser)",
+    "browserRequirements": "Requires JavaScript",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "moon-jam", "url": "https://github.com/moon-jam" },
+    "license": "https://opensource.org/licenses/MIT"
+  }
+  </script>
+
+  <!-- Google Analytics: loaded after the page is interactive to keep it off
+       the critical path -->
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-
-    gtag('config', 'G-N6H36189J1');
+    function loadAnalytics() {
+      gtag('js', new Date());
+      gtag('config', 'G-N6H36189J1');
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=G-N6H36189J1';
+      document.head.appendChild(s);
+    }
+    if (document.readyState === 'complete') loadAnalytics();
+    else window.addEventListener('load', () => {
+      (window.requestIdleCallback || ((cb) => setTimeout(cb, 1)))(loadAnalytics);
+    });
   </script>
 
   <!-- Set the theme before stylesheets parse so dark mode never flashes light.
@@ -35,37 +90,35 @@
 
   <link rel="stylesheet" href="ui.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/marked-highlight@2/lib/index.umd.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-diff.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-rust.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
-  
+  <!-- KaTeX, Prism language components and CodeMirror language modes load on
+       idle after the page is interactive (see app.js loadDeferredAssets), so
+       the editor paints without waiting for render-time-only assets. -->
+
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/overlay.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/simple.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/gfm/gfm.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/diff/diff.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/yaml/yaml.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/rust/rust.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/go/go.min.js"></script>
+  <!-- Per-language editor highlighting modes load after the page is interactive
+       (see app.js lazyLoadEditorModes); the editor works with markdown+gfm alone. -->
 </head>
 <body>
+  <noscript>
+    <div style="max-width:680px;margin:40px auto;padding:0 20px;font-family:sans-serif;line-height:1.6;">
+      <h1>md2pdf — Markdown to PDF with live preview</h1>
+      <p>md2pdf is a free online Markdown to PDF converter with a live, paginated
+        preview. The preview shows the real PDF layout: actual page breaks,
+        margins and page numbers, not just styled HTML.</p>
+      <p>Features include syntax highlighting, LaTeX math via KaTeX, manual page
+        breaks, custom CSS, image sizing and local image folders. Everything runs
+        in your browser. Nothing is uploaded to any server.</p>
+      <p>This app requires JavaScript. Source code:
+        <a href="https://github.com/moon-jam/md2pdf">github.com/moon-jam/md2pdf</a>.</p>
+    </div>
+  </noscript>
   <aside id="sidebar">
     <div id="sidebar-top">
       <h1>md2pdf</h1>
