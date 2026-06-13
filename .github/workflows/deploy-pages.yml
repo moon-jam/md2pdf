@@ -33,10 +33,21 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v6
 
+      # Source in web/ stays readable; minify only the published copy.
+      # style.css is left as-is: it is injected into the preview iframe at
+      # runtime and its @import font rule is order-sensitive, so it is not
+      # worth reordering for ~2 KB.
+      - name: Build (minify) into dist/
+        run: |
+          mkdir -p dist
+          cp -RL web/. dist/
+          npx --yes esbuild@0.24 web/app.js --minify --outfile=dist/app.js --log-level=warning
+          npx --yes esbuild@0.24 web/ui.css --minify --outfile=dist/ui.css --log-level=warning
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: web
+          path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment
