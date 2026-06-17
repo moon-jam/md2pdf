@@ -278,10 +278,16 @@ const cli = fs.existsSync(vivliostyleBin) ? vivliostyleBin : 'vivliostyle';
   const mdContent = preprocessMarkdown(inputAbs);
   fs.writeFileSync(tmpMdAbs, mdContent, 'utf8');
 
-  // Resolve the Google Fonts @import to cached, inlined font subsets.
   let cssContent = fs.readFileSync(styleAbs, 'utf8');
   if (argv.pageNumbers) cssContent += PAGE_NUMBERS_CSS;
-  cssContent = await resolveFontImport(cssContent, mdContent);
+
+  // Inline cached font subsets for one-shot builds only. Preview keeps the
+  // network @import: its CSS is passed as a --css command-line argument (where
+  // megabytes of inlined base64 would exceed ARG_MAX), and the long-lived
+  // preview browser caches the fonts after the first fetch anyway.
+  if (!argv.watch) {
+    cssContent = await resolveFontImport(cssContent, mdContent);
+  }
 
   let vivliostyleArgs;
   if (argv.watch) {
