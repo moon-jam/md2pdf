@@ -444,6 +444,25 @@ function updateEditorWordCount(recountTotal = false) {
 
 updateEditorWordCount(true);
 
+// CodeMirror does not automatically invalidate its wrapped-line height map
+// when only its container changes width. The browser visually reflows the
+// text, but stale mouse coordinates can make the new visual lines impossible
+// to select. Refresh once per animation frame after any editor-pane resize.
+let editorRefreshFrame = 0;
+function scheduleEditorRefresh() {
+  if (editorRefreshFrame) return;
+  editorRefreshFrame = requestAnimationFrame(() => {
+    editorRefreshFrame = 0;
+    cm.refresh();
+  });
+}
+
+const editorResizeObserver = typeof ResizeObserver === 'function'
+  ? new ResizeObserver(scheduleEditorRefresh)
+  : null;
+editorResizeObserver?.observe(editorPane);
+window.addEventListener('resize', scheduleEditorRefresh);
+
 // ---- Deferred asset loading ----
 // Render-time-only libraries (KaTeX for math, Prism language components for
 // code highlighting) and the editor's per-language modes are kept off the
@@ -773,6 +792,7 @@ document.addEventListener('mouseup', () => {
     resizerEl.classList.remove('resizing');
     if (sidebarResizer) sidebarResizer.classList.remove('resizing');
     setPreviewPointerEvents('');
+    scheduleEditorRefresh();
     if (dragCollapsedSidebar) maybeShowSidebarHint();
   }
 });
