@@ -636,6 +636,8 @@ select:focus-visible { outline: 2px solid var(--accent); }
 
 /* ---------- CodeMirror Overrides ---------- */
 .CodeMirror {
+  flex: 1;
+  min-height: 0;
   width: 100% !important;
   height: 100% !important;
   font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
@@ -648,6 +650,29 @@ select:focus-visible { outline: 2px solid var(--accent); }
 .CodeMirror-scroll { padding-right: 20px; }
 .CodeMirror-cursor { border-left-color: var(--text) !important; }
 .CodeMirror-selected { background: rgba(88,166,255,0.15) !important; }
+
+#editor-status-bar {
+  min-height: 28px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+#editor-selection-count {
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+  color: var(--accent);
+  font-weight: 600;
+}
 
 /* ---- Catppuccin Mocha — dark mode token colours ----
    Selectors use `.cm-s-default` to beat the CDN stylesheet

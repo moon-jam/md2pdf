@@ -10,6 +10,8 @@ const uploadLabel    = document.getElementById('upload-label');
 const uploadArea     = document.getElementById('upload-area');
 const editorTextarea = document.getElementById('editor');
 const editorPane     = document.getElementById('editor-pane');
+const editorWordCount = document.getElementById('editor-word-count');
+const editorSelectionCount = document.getElementById('editor-selection-count');
 const previewFrameA  = document.getElementById('preview-frame-a');
 const previewFrameB  = document.getElementById('preview-frame-b');
 const pageSizeSelect = document.getElementById('page-size');
@@ -414,6 +416,33 @@ const cm = CodeMirror.fromTextArea(editorTextarea, {
   lineWrapping: true,
   dragDrop: false,
 });
+
+// Count CJK text by character and other languages by word. This follows the
+// convention users expect from document editors for mixed-language content.
+const CJK_CHARACTER_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
+const NON_CJK_WORD_RE = /[\p{L}\p{N}]+(?:['’_-][\p{L}\p{N}]+)*/gu;
+const countFormatter = new Intl.NumberFormat(document.documentElement.lang || 'en');
+let totalWordCount = 0;
+
+function countWords(text) {
+  const cjkCharacters = text.match(CJK_CHARACTER_RE)?.length || 0;
+  const nonCjkWords = text.replace(CJK_CHARACTER_RE, ' ').match(NON_CJK_WORD_RE)?.length || 0;
+  return cjkCharacters + nonCjkWords;
+}
+
+function updateEditorWordCount(recountTotal = false) {
+  if (recountTotal) totalWordCount = countWords(cm.getValue());
+  editorWordCount.textContent = `Words ${countFormatter.format(totalWordCount)}`;
+
+  const hasSelection = cm.somethingSelected();
+  editorSelectionCount.hidden = !hasSelection;
+  if (hasSelection) {
+    const selectedText = cm.getSelections().join('\n');
+    editorSelectionCount.textContent = `Selected ${countFormatter.format(countWords(selectedText))}`;
+  }
+}
+
+updateEditorWordCount(true);
 
 // ---- Deferred asset loading ----
 // Render-time-only libraries (KaTeX for math, Prism language components for
@@ -2216,11 +2245,14 @@ folderInput.addEventListener('change', async (e) => {
 //  Live edit & Scroll Sync
 // ============================================================
 cm.on('change', () => {
+  updateEditorWordCount(true);
   scheduleRender();
   scheduleTitleFromH1Update();
   scheduleTextStateSave();
   scheduleImageManagerRefresh();
 });
+
+cm.on('cursorActivity', () => updateEditorWordCount());
 
 let lastScrollPercent = 0;
 
